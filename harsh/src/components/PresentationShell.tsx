@@ -232,18 +232,18 @@ export const PresentationShell: React.FC = () => {
       }
 
       // --- Analytical Flow ---
-      // 2. Get normalized insight (mock or real API, optionally Gemini-enriched)
+      // 2. Get insight (MLOutputContract) from adapter
       const insight = await getInsightResponse(queryText, intent, currentPersona);
 
-      // 3. Build the persona-shaped response blocks
+      // 3. Build persona-shaped rendered response
       const response = buildResponseFromInsight(currentPersona, insight);
 
-      // 4. Store both rendered response AND raw insight (for instant persona re-render)
+      // 4. Store both the rendered response AND raw ML contract (for instant persona re-render)
       updateMessage(aiMsgId, {
-        isLoading: false,
+        isLoading:  false,
         response,
-        rawInsight: insight,
-        rawQuery: queryText,
+        rawInsight: insight,   // MLOutputContract
+        rawQuery:   queryText,
       });
     } catch (err) {
       console.error('[PresentationShell] processQuery failed:', err);

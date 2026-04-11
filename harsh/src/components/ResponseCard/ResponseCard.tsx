@@ -3,20 +3,20 @@ import type { RenderedResponse, ResponseBlock, Persona } from '../../types';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { ChartRenderer } from './ChartRenderer';
 import { EvidenceDrawer } from './EvidenceDrawer';
-import { ArrowRight, Volume2, HelpCircle, X, AlertCircle } from 'lucide-react';
+import { ArrowRight, Volume2, HelpCircle, X, AlertCircle, TrendingUp } from 'lucide-react';
 import { useAppContext } from '../../stores/appStore';
 import { simplifyBlock, type SimplifyContext } from '../../services/geminiService';
 
 // ================================================================
-// PERSONA → CONFUSION BUTTON LABEL
+// CONFUSION BUTTON LABELS PER PERSONA
 // ================================================================
 
 const CONFUSION_LABEL: Record<Persona, string> = {
-  Beginner: '? Help',
-  Everyday: '? Explain',
-  SME: '? Detail',
-  Executive: '? So what',
-  Analyst: '? Methodology',
+  Beginner:   '? Help',
+  Everyday:   '? Explain',
+  SME:        '? Detail',
+  Executive:  '? So what',
+  Analyst:    '? Methodology',
   Compliance: '? Audit note',
 };
 
@@ -39,7 +39,6 @@ const BlockWithConfusion: React.FC<{
       setShowSimplified(true);
       setIsLoading(true);
       try {
-        // Pass full data context so Gemini can reference real numbers
         const text = await simplifyBlock(block.content, block.type, currentPersona, context);
         setDynamicExplanation(text);
       } catch {
@@ -57,8 +56,6 @@ const BlockWithConfusion: React.FC<{
   return (
     <div className="response-block relative group">
       {children}
-
-      {/* Always visible — not hidden behind hover */}
       <button
         onClick={handleToggle}
         className="confusion-btn mt-2 flex items-center gap-1"
@@ -95,7 +92,7 @@ const BlockWithConfusion: React.FC<{
 };
 
 // ================================================================
-// AUDIT BANNER (Compliance only)
+// AUDIT BANNER
 // ================================================================
 
 const AuditBanner: React.FC<{ content: string }> = ({ content }) => (
@@ -104,6 +101,43 @@ const AuditBanner: React.FC<{ content: string }> = ({ content }) => (
     <span className="font-mono text-xs leading-relaxed">{content}</span>
   </div>
 );
+
+// ================================================================
+// DIAGNOSTIC PILL
+// ================================================================
+
+const DiagnosticPill: React.FC<{ text: string }> = ({ text }) => (
+  <div className="flex items-start gap-2 px-3 py-2 bg-amber-50/70 border border-amber-200/60 rounded-xl text-xs text-amber-800 font-medium leading-relaxed">
+    <TrendingUp size={12} className="shrink-0 mt-0.5 text-amber-500" />
+    {text.replace(/^⚑\s*/, '')}
+  </div>
+);
+
+// ================================================================
+// KPI STRIP
+// ================================================================
+
+const KpiStrip: React.FC<{ data: ResponseBlock }> = ({ data }) => {
+  const metrics = data.chartData ?? [];
+  if (metrics.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-3 py-1">
+      {metrics.map((m, i) => (
+        <div key={i} className="glass-card-low px-4 py-2 flex flex-col gap-0.5 min-w-[140px]">
+          <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{m.label}</span>
+          <span className="text-xl font-bold text-slate-800">
+            {m.value.toLocaleString()} <span className="text-sm font-normal text-slate-500">{m.unit}</span>
+          </span>
+          {m.delta_pct != null && (
+            <span className={`text-xs font-semibold ${m.delta_pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+              {m.delta_pct >= 0 ? '▲' : '▼'} {Math.abs(m.delta_pct).toFixed(1)}% vs prior
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 // ================================================================
 // MAIN RESPONSE CARD
@@ -118,20 +152,18 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
   const { currentPersona, voiceMode } = useAppContext();
 
   const isCompliance = currentPersona === 'Compliance';
-  const isAnalyst = currentPersona === 'Analyst';
+  const isAnalyst    = currentPersona === 'Analyst';
   const shouldExpandEvidence = isCompliance || isAnalyst;
 
-  // ── TTS ──────────────────────────────────────────────────────
+  // ── TTS ──────────────────────────────────────────────────────────
   const readAloud = () => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-
     let fullText = response.ttsHeadline + '. ';
     const insight = response.blocks.find(b => b.type === 'insight')?.content;
-    const action = response.blocks.find(b => b.type === 'action')?.content;
+    const action  = response.blocks.find(b => b.type === 'action')?.content;
     if (insight) fullText += insight + '. ';
-    if (action) fullText += 'Recommended action: ' + action + '.';
-
+    if (action)  fullText += 'Recommended next step: ' + action + '.';
     const utt = new SpeechSynthesisUtterance(fullText);
     utt.rate = 0.95;
     window.speechSynthesis.speak(utt);
@@ -142,38 +174,21 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
     return () => { if (voiceMode) window.speechSynthesis.cancel(); };
   }, []);
 
-  // ── Action buttons (max per persona) ─────────────────────────
-  const actionBlocks = response.blocks.filter(b => b.type === 'action');
-
-  // ── Insight context for the confusion button (simplifyBlock) ──
-  // Extract from _originalInsight so Gemini has the actual ML data numbers.
-  const rawInsight = (response as any)._originalInsight ?? response.evidence;
-  const simplifyCtx: SimplifyContext | undefined = rawInsight ? {
-    query: response.evidence.source ? response.evidence.rawValues?.[0]?.label ?? 'data analysis'
-      : 'data analysis',
-    mainSummary: response.ttsHeadline,
-    metrics: response.evidence.rawValues.map(v => ({
-      label: v.label,
-      value: v.value,
-      prev_value: v.prev_value ?? null,
-      unit: v.unit,
+  // ── Simplify context ──────────────────────────────────────────────
+  const simplifyCtx: SimplifyContext = {
+    query:          response.ttsHeadline,
+    mainSummary:    response.ttsHeadline,
+    metrics:        response.evidence.rawValues.map(v => ({
+      label: v.label, value: v.value, prev_value: v.prev_value ?? null, unit: v.unit,
     })),
-    breakdown: response.evidence.rawValues.map(v => ({ label: v.label, value: v.value })),
-    anomalies: response.evidence.limitations ?? [],
-    trendDirection: undefined,
-    // The actual user query is in the metadata.query stored via evidence
-    query: response.evidence.source ?? response.ttsHeadline,
-  } : undefined;
+    breakdown:      response.evidence.rawValues.map(v => ({ label: v.label, value: v.value })),
+    anomalies:      response.evidence.limitations ?? [],
+  };
 
-  // Override the query with a cleaner extraction from evidence.source
-  // evidence.source is set by insightAdapter as the original query string
-  const finalCtx: SimplifyContext | undefined = simplifyCtx ? {
-    ...simplifyCtx,
-    query: response.evidence.source
-      // evidence.source can be "ML Analytics Engine" so use ttsHeadline as fallback
-      ? response.ttsHeadline
-      : response.ttsHeadline,
-  } : undefined;
+  // ── Extracted block groups ────────────────────────────────────────
+  const actionBlocks  = response.blocks.filter(b => b.type === 'action');
+  const diagBlocks    = response.blocks.filter(b => b.type === 'audit' && b.content.startsWith('⚑'));
+  const coreBlocks    = response.blocks.filter(b => !actionBlocks.includes(b) && !diagBlocks.includes(b));
 
   return (
     <div className={`glass-card p-6 w-full space-y-4 stagger relative persona-card persona-${currentPersona.toLowerCase()}`}>
@@ -193,16 +208,15 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
         </button>
       </div>
 
-      {/* Render all blocks */}
-      {response.blocks.map((block, i) => {
+      {/* Core blocks (headline, audit, chart, kpi, insight, table, secondary_chart) */}
+      {coreBlocks.map((block, i) => {
 
-        // HEADLINE
         if (block.type === 'headline') {
           return (
-            <BlockWithConfusion key={i} block={block} context={finalCtx}>
-              <h3 className={`font-semibold text-slate-800 leading-snug pr-12 ${
-                currentPersona === 'Beginner' ? 'text-base' :
-                currentPersona === 'Executive' ? 'text-xl' :
+            <BlockWithConfusion key={i} block={block} context={simplifyCtx}>
+              <h3 className={`font-semibold text-slate-800 leading-snug pr-32 ${
+                currentPersona === 'Beginner'  ? 'text-base'  :
+                currentPersona === 'Executive' ? 'text-xl'    :
                 'text-[17px]'
               }`}>
                 {block.content}
@@ -211,58 +225,56 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
           );
         }
 
-        // AUDIT BANNER
         if (block.type === 'audit' && block.auditContent) {
           return <AuditBanner key={i} content={block.auditContent} />;
         }
 
-        // PRIMARY CHART
+        if (block.type === 'kpi' && block.chartData) {
+          return <KpiStrip key={i} data={block} />;
+        }
+
         if (block.type === 'chart' && block.chartData && block.chartType) {
           return (
             <div className="response-block" key={i}>
+              {block.content && (
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">{block.content}</p>
+              )}
               <ChartRenderer visual={block.chartType} data={block.chartData} />
             </div>
           );
         }
 
-        // SECONDARY CHART (Analyst gets compact table, SME gets compact KPI)
         if (block.type === 'secondary_chart' && block.chartData && block.chartType) {
           return (
             <div key={i} className="response-block secondary-visual">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">
-                Supporting View
-              </p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Supporting View</p>
               <ChartRenderer visual={block.chartType} data={block.chartData} compact />
             </div>
           );
         }
 
-        // TABLE (Compliance primary block)
         if (block.type === 'table') {
           return (
             <div key={i} className="response-block">
-              <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
-                Exact Record Values
-              </p>
+              <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Exact Record Values</p>
               <ChartRenderer visual="Table" data={block.tableData ?? block.chartData ?? []} />
               <p className="text-xs text-slate-500 mt-3 leading-relaxed">{block.content}</p>
             </div>
           );
         }
 
-        // INSIGHT
         if (block.type === 'insight') {
           return (
-            <BlockWithConfusion key={i} block={block} context={finalCtx}>
+            <BlockWithConfusion key={i} block={block} context={simplifyCtx}>
               <div className="flex items-start gap-3">
                 <div className={`w-1 min-h-[20px] rounded-full shrink-0 mt-1 ${
                   isCompliance ? 'bg-amber-400' :
-                  isAnalyst ? 'bg-violet-400' :
+                  isAnalyst    ? 'bg-violet-400' :
                   'bg-blue-400'
                 }`} style={{ height: 'auto' }} />
                 <p className={`leading-relaxed font-medium ${
                   currentPersona === 'Beginner' ? 'text-sm text-slate-600' :
-                  currentPersona === 'Analyst' ? 'text-xs text-slate-700 font-mono' :
+                  currentPersona === 'Analyst'  ? 'text-xs text-slate-700 font-mono' :
                   'text-sm text-slate-600'
                 }`}>
                   {block.content}
@@ -275,14 +287,24 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
         return null;
       })}
 
-      {/* ACTION BUTTONS — each wrapped with the confusion button so users can ask what an action means */}
+      {/* Diagnostics / Anomaly Pills */}
+      {diagBlocks.length > 0 && (
+        <div className="space-y-2 pt-1">
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Key Drivers & Anomalies</p>
+          <div className="flex flex-wrap gap-2">
+            {diagBlocks.map((b, i) => <DiagnosticPill key={i} text={b.content} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Recommended Next Steps */}
       {actionBlocks.length > 0 && (
         <div className="space-y-2 pt-1">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3 mt-4">
             Recommended Next Steps
           </p>
           {actionBlocks.map((block, i) => (
-            <BlockWithConfusion key={i} block={block} context={finalCtx}>
+            <BlockWithConfusion key={i} block={block} context={simplifyCtx}>
               <button
                 onClick={() => onActionClick?.(block.content)}
                 className="flex items-center gap-2 px-4 py-2 glass-card-low text-slate-700 text-sm font-semibold hover:text-blue-600 hover:shadow-md transition-all cursor-pointer w-full text-left"

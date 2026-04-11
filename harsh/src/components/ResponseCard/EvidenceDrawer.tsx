@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import type { RenderedResponse } from '../../types';
+import type { EvidenceData } from '../../types';
 import { ChevronDown, Database, Clock, Calculator, ShieldCheck, Filter, AlertTriangle } from 'lucide-react';
 
 interface EvidenceDrawerProps {
-  evidence: RenderedResponse['evidence'];
+  evidence: EvidenceData;
   defaultExpanded?: boolean;
   isCompliance?: boolean;
   isAnalyst?: boolean;

@@ -1,11 +1,11 @@
 /**
- * APP STORE — central state with full session persistence.
+ * APP STORE v2 — central state with full session persistence.
  *
  * Persistence strategy:
  *   - On mount: restore messages from localStorage instantly (no flicker)
- *   - On every AI message: save ChatTurn to mongoService + update UI cache
- *   - On persona save: persist to sessionService
- *   - loadMoreHistory(): scroll-back — prepend older messages
+ *   - On backend: hydrate from user_conversations monolithic document
+ *   - On new AI message: saveMessage() → $push to conversation doc
+ *   - On persona switch: reRenderWithPersona() — no API call, pure local
  */
 
 import React, {
@@ -13,23 +13,22 @@ import React, {
 } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  Persona, ChatMessage, OnboardingAnswers, NormalizedInsight, ChatTurn,
+  Persona, ChatMessage, OnboardingAnswers, MLOutputContract,
 } from '../types';
 import { buildResponseFromInsight, reRenderWithPersona } from '../utils/responseMapper';
 import {
   getUserId, getConversationId, getSessionId,
-  newMessageId, incrementTurnIndex, currentTurnIndex,
+  newMessageId,
   savePersona, loadPersona, markOnboardingDone, isOnboardingDone,
   startNewConversation as sessionStartNew, setUserId, getIsLoggedIn,
   clearSession,
 } from '../services/sessionService';
 import {
-  saveTurn, loadHistory, startConversation, persistMessages,
-  loadPersistedMessages, clearPersistedMessages, extractEntities,
-  buildPreviousContext,
+  saveMessage, loadHistory, startConversation, persistMessages,
+  loadPersistedMessages, clearPersistedMessages,
 } from '../services/mongoService';
 
-type AppView = 'login' | 'onboarding' | 'transition' | 'chat';
+type AppView = 'login' | 'upload' | 'onboarding' | 'transition' | 'chat';
 
 interface AppContextState {
   // Persona
@@ -59,20 +58,20 @@ interface AppContextState {
   voiceMode: boolean;
   setVoiceMode: (v: boolean) => void;
 
-  // Session IDs (read-only, used by PresentationShell for ML request building)
+  // Session IDs
   userId: string;
   conversationId: string;
   sessionId: string;
+  datasetRef: string | null;
+  setDatasetRef: (ref: string) => void;
 
-  // History pagination (scroll-back)
+  // History scroll-back
   isRestoring: boolean;
   hasMoreHistory: boolean;
   loadMoreHistory: () => Promise<void>;
 
   // Conversation management
   startFreshConversation: () => void;
-  
-  // Login management
   loginUser: (username: string) => Promise<void>;
   logoutUser: () => void;
 }
@@ -80,26 +79,27 @@ interface AppContextState {
 const AppContext = createContext<AppContextState | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // ── Session IDs (stable across renders) ─────────────────────────
+  // ── Session IDs ──────────────────────────────────────────────────
   const [userId, setUserIdState] = useState(getUserId());
   const conversationId = useRef(getConversationId()).current;
-  const sessionId      = useRef(getSessionId()).current;
+  const sessionId = useRef(getSessionId()).current;
 
-  // ── Resolve initial persona from localStorage or default ─────────
+  // ── Initial persona ──────────────────────────────────────────────
   const resolveInitialPersona = (): Persona => {
     const saved = loadPersona();
     const valid: Persona[] = ['Beginner', 'Everyday', 'SME', 'Executive', 'Analyst', 'Compliance'];
     return (valid.includes(saved as Persona) ? saved : 'Beginner') as Persona;
   };
 
-  // ── Initial view — skip onboarding if already done ──────────────
+  // ── Initial view ─────────────────────────────────────────────────
   const resolveInitialView = (): AppView => {
     if (!getIsLoggedIn()) return 'login';
-    return isOnboardingDone() ? 'chat' : 'onboarding';
+    return isOnboardingDone() ? 'chat' : 'upload';
   };
 
   // ── State ────────────────────────────────────────────────────────
   const [currentPersona, setCurrentPersonaRaw] = useState<Persona>(resolveInitialPersona);
+  const [datasetRef, setDatasetRef] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [appView, setAppView] = useState<AppView>(resolveInitialView);
@@ -107,105 +107,89 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [voiceMode, setVoiceMode] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
-  const [oldestCursor, setOldestCursor] = useState<string | null>(null);
 
   // ── Restore messages on mount ─────────────────────────────────────
-  // Step 1: instant restore from localStorage UI cache (no flicker)
-  // Step 2: try to sync from backend (when VITE_CHAT_API_URL is set)
   useEffect(() => {
-    if (appView !== 'chat') return;  // Don't restore during onboarding
+    if (appView !== 'chat') return;
 
+    // Step 1: instant restore from localStorage UI cache
     const cached = loadPersistedMessages();
     if (cached.length > 0) {
       setMessages(cached);
-      console.log(`[appStore] Restored ${cached.length} messages from localStorage`);
     }
 
-    // Try backend history (async, non-blocking)
+    // Step 2: try to hydrate from backend (non-blocking)
     (async () => {
       setIsRestoring(true);
       try {
-        const { turns, hasMore, nextCursor } = await loadHistory(conversationId);
-        if (turns.length > 0) {
-          // Reconstruct ChatMessage[] from ChatTurn[]
-          const restoredMessages = turnsToMessages(turns);
-          if (restoredMessages.length > cached.length) {
-            // Backend has more — use it as truth
-            setMessages(restoredMessages);
-            persistMessages(restoredMessages);
-            console.log(`[appStore] Restored ${restoredMessages.length} messages from backend`);
+        const historyRes = await loadHistory(conversationId, userId);
+        const { messages: apiMsgs } = historyRes;
+        if (apiMsgs && apiMsgs.length > 0) {
+          const restored = apiMsgs
+            .filter(m => m.role === 'assistant' && m.ml_output && Object.keys(m.ml_output).length > 0)
+            .map(m => ({
+              id: m.message_id,
+              sender: 'ai' as const,
+              rawInsight: m.ml_output as MLOutputContract,
+              response: buildResponseFromInsight(currentPersona, m.ml_output as MLOutputContract),
+              rawQuery: m.user_query,
+              isLoading: false,
+            }));
+          if (restored.length > cached.length) {
+            setMessages(restored);
+            persistMessages(restored);
           }
-          setHasMoreHistory(hasMore);
-          setOldestCursor(nextCursor);
         }
       } catch (err) {
-        console.warn('[appStore] History restore from backend failed, using cache:', err);
+        console.warn('[appStore] Backend history restore failed, using cache:', err);
       } finally {
         setIsRestoring(false);
       }
     })();
   }, [appView]);
 
-  // ── Persist messages to localStorage on every change ─────────────
-  // This is the fast-path restore for next reload.
+  // ── Persist messages to localStorage on change ────────────────────
   const prevMessagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
     if (messages.length === 0) return;
     if (messages === prevMessagesRef.current) return;
     prevMessagesRef.current = messages;
-    // Debounce slightly to avoid too many writes during rapid updates
     const t = setTimeout(() => persistMessages(messages), 200);
     return () => clearTimeout(t);
   }, [messages]);
 
-  // ── addMessage — also builds + saves ChatTurn ─────────────────────
+  // ── addMessage ────────────────────────────────────────────────────
   const addMessage = useCallback(
     (m: ChatMessage) => {
       setMessages(prev => {
         const next = [...prev, m];
-
-        // Save to MongoDB/localStorage (non-blocking)
-        void persistChatTurn(m, prev, userId, conversationId, sessionId, currentPersona);
-
+        void persistMsg(m, userId, conversationId);
         return next;
       });
     },
-    [userId, conversationId, sessionId, currentPersona],
+    [userId, conversationId],
   );
 
+  // ── updateMessage ─────────────────────────────────────────────────
   const updateMessage = useCallback(
     (id: string, partial: Partial<ChatMessage>) => {
       setMessages(prev => {
-        const next = prev.map(msg => (msg.id === id ? { ...msg, ...partial } : msg));
-        const updatedMsg = next.find(m => m.id === id);
-        
-        // Save to Database if an AI message has transitioned from loading to completed
-        if (updatedMsg && updatedMsg.sender === 'ai' && partial.isLoading === false) {
-          void persistChatTurn(updatedMsg, next, userId, conversationId, sessionId, currentPersona);
+        const next = prev.map(msg => msg.id === id ? { ...msg, ...partial } : msg);
+        const updated = next.find(m => m.id === id);
+        if (updated && updated.sender === 'ai' && partial.isLoading === false) {
+          void persistMsg(updated, userId, conversationId);
         }
-        
         return next;
       });
     },
-    [userId, conversationId, sessionId, currentPersona],
+    [userId, conversationId],
   );
 
-  // ── Scroll-back: load older messages ─────────────────────────────
+  // ── Scroll-back history ───────────────────────────────────────────
   const loadMoreHistory = useCallback(async () => {
-    if (!hasMoreHistory || !oldestCursor) return;
-    setIsRestoring(true);
-    try {
-      const { turns, hasMore, nextCursor } = await loadHistory(conversationId, oldestCursor);
-      if (turns.length > 0) {
-        const older = turnsToMessages(turns);
-        setMessages(prev => [...older, ...prev]);
-        setHasMoreHistory(hasMore);
-        setOldestCursor(nextCursor);
-      }
-    } finally {
-      setIsRestoring(false);
-    }
-  }, [conversationId, hasMoreHistory, oldestCursor]);
+    // No-op: monolithic document loads everything at once
+    setHasMoreHistory(false);
+  }, []);
 
   // ── Persona switch — re-renders all AI messages instantly ─────────
   const switchPersona = useCallback(
@@ -216,13 +200,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setMessages(prev => {
         const updates = reRenderWithPersona(prev, newPersona);
         const updateMap = new Map(updates.map(u => [u.id, u.response]));
-
         return prev.map(msg => {
           if (msg.sender !== 'ai' || !msg.rawInsight) return msg;
-          const newResponse = updateMap.get(msg.id);
-          if (!newResponse) return msg;
-          const updatedRawInsight: NormalizedInsight = { ...msg.rawInsight, persona: newPersona };
-          return { ...msg, response: newResponse, rawInsight: updatedRawInsight };
+          const newResp = updateMap.get(msg.id);
+          if (!newResp) return msg;
+          return { ...msg, response: newResp };
         });
       });
     },
@@ -234,7 +216,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     savePersona(p);
   }, []);
 
-  // ── Onboarding completion ────────────────────────────────────────
+  // ── Onboarding completion ─────────────────────────────────────────
   const completeOnboarding = useCallback(
     (answers: OnboardingAnswers, persona: Persona) => {
       setOnboardingAnswers(answers);
@@ -242,72 +224,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       savePersona(persona);
       markOnboardingDone();
 
-      // Create conversation record in MongoDB
       void startConversation({
         conversation_id: conversationId,
         user_id: userId,
+        user_type: persona,
+        dataset_ref: datasetRef,
         title: 'New Conversation',
-        persona,
         created_at: new Date().toISOString(),
-        last_message_at: new Date().toISOString(),
-        turn_count: 0,
+        messages: [],
       });
     },
-    [conversationId, userId],
+    [conversationId, userId, datasetRef],
   );
 
-  // ── Start completely fresh conversation ──────────────────────────
+  // ── Fresh conversation ────────────────────────────────────────────
   const startFreshConversation = useCallback(() => {
     const newId = sessionStartNew();
-    
-    // Create conversation record in MongoDB so listConversations can find it
     void startConversation({
       conversation_id: newId,
       user_id: userId,
+      user_type: currentPersona,
+      dataset_ref: datasetRef,
       title: 'New Conversation',
-      persona: currentPersona,
       created_at: new Date().toISOString(),
-      last_message_at: new Date().toISOString(),
-      turn_count: 0,
+      messages: [],
     });
-
     clearPersistedMessages();
     setMessages([]);
     setHasMoreHistory(false);
-    setOldestCursor(null);
-  }, [userId, currentPersona]);
+  }, [userId, currentPersona, datasetRef]);
 
-  // ── Login User ───────────────────────────────────────────────────
+  // ── Login ────────────────────────────────────────────────────────
   const loginUser = useCallback(async (username: string) => {
     setUserId(username);
-    
-    // Check if user has previous conversations and load the most recent one
-    const { listConversations, startConversation } = await import('../services/mongoService');
+    setUserIdState(username);
+    const { listConversations } = await import('../services/mongoService');
     const convs = await listConversations(username);
-    
     if (convs && convs.length > 0) {
+      if (convs[0].dataset_ref) setDatasetRef(convs[0].dataset_ref);
       localStorage.setItem('t2d_conv_id', convs[0].conversation_id);
     } else {
       const newId = sessionStartNew();
-      
-      // Ensure we create a record for this new user so history isn't lost
       await startConversation({
         conversation_id: newId,
         user_id: username,
+        user_type: currentPersona,
+        dataset_ref: datasetRef,
         title: 'New Conversation',
-        persona: currentPersona,
         created_at: new Date().toISOString(),
-        last_message_at: new Date().toISOString(),
-        turn_count: 0,
+        messages: [],
       });
     }
-    
-    // Clear persisted UI cache so it fetches history cleanly from backend
     clearPersistedMessages();
     window.location.reload();
-  }, [currentPersona]);
+  }, [currentPersona, datasetRef]);
 
-  // ── Logout User ──────────────────────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────────────
   const logoutUser = useCallback(() => {
     clearSession();
     window.location.reload();
@@ -316,30 +288,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
-        currentPersona,
-        setCurrentPersona,
-        switchPersona,
-        messages,
-        addMessage,
-        updateMessage,
-        isLoading,
-        setIsLoading,
-        appView,
-        setAppView,
+        currentPersona, setCurrentPersona, switchPersona,
+        messages, addMessage, updateMessage,
+        isLoading, setIsLoading,
+        appView, setAppView,
         completeOnboarding,
-        onboardingAnswers,
-        setOnboardingAnswers,
-        voiceMode,
-        setVoiceMode,
-        userId,
-        conversationId,
-        sessionId,
-        isRestoring,
-        hasMoreHistory,
-        loadMoreHistory,
-        startFreshConversation,
-        loginUser,
-        logoutUser,
+        onboardingAnswers, setOnboardingAnswers,
+        voiceMode, setVoiceMode,
+        userId, conversationId, sessionId,
+        datasetRef, setDatasetRef,
+        isRestoring, hasMoreHistory, loadMoreHistory,
+        startFreshConversation, loginUser, logoutUser,
       }}
     >
       {children}
@@ -357,159 +316,19 @@ export const useAppContext = () => {
 // INTERNAL HELPERS
 // ================================================================
 
-/**
- * Builds a ChatTurn from a ChatMessage and saves it.
- * Called from addMessage — fire-and-forget (void).
- */
-async function persistChatTurn(
+async function persistMsg(
   m: ChatMessage,
-  prevMessages: ChatMessage[],
   userId: string,
   conversationId: string,
-  sessionId: string,
-  persona: Persona,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const rawQuery = m.text ?? m.rawQuery ?? '';
-  const turnIdx = incrementTurnIndex();
-
-  // Build previous context from recent assistant turns
-  const recentTurns = prevMessages
-    .filter(msg => msg.sender === 'ai' && msg.rawInsight)
-    .slice(-3)
-    .map((msg, i): ChatTurn => ({
-      user_id: userId, conversation_id: conversationId,
-      session_id: sessionId, message_id: msg.id,
-      turn_index: i, role: 'assistant',
-      raw_user_query: msg.rawQuery ?? '',
-      normalized_query: (msg.rawQuery ?? '').toLowerCase().trim(),
-      detected_intent: msg.rawInsight?.query_type ?? 'Unknown',
-      entities: {}, previous_context: '',
-      ml_request_json: {}, ml_response_json: {},
-      simplified_response: msg.response?.ttsHeadline ?? '',
-      final_interpretation: msg.response?.blocks.find(b => b.type === 'insight')?.content ?? '',
-      created_at: now, updated_at: now,
-      metadata: {
-        persona, query_type: msg.rawInsight?.query_type ?? '',
-        confidence: msg.rawInsight?.confidence ?? 0,
-        source: msg.rawInsight?.metadata?.source ?? '',
-      },
-    }));
-
-  const previousContext = buildPreviousContext(recentTurns);
-
-  if (m.sender === 'user') {
-    const turn: ChatTurn = {
-      user_id: userId, conversation_id: conversationId,
-      session_id: sessionId, message_id: m.id,
-      turn_index: turnIdx, role: 'user',
-      raw_user_query: rawQuery,
-      normalized_query: rawQuery.toLowerCase().trim(),
-      detected_intent: 'Unknown',
-      entities: extractEntities(rawQuery),
-      previous_context: previousContext,
-      ml_request_json: {
-        user_id: userId, conversation_id: conversationId,
-        session_id: sessionId, message_id: m.id,
-        turn_index: turnIdx, raw_query: rawQuery,
-        normalized_query: rawQuery.toLowerCase().trim(),
-        persona, previous_context: previousContext,
-      },
-      ml_response_json: {},
-      simplified_response: rawQuery,
-      final_interpretation: '',
-      created_at: now, updated_at: now,
-      metadata: { persona, query_type: '', confidence: 0, source: '' },
-    };
-    await saveTurn(turn);
-  }
-
-  if (m.sender === 'ai' && m.rawInsight) {
-    const insight = m.rawInsight;
-    const response = m.response;
-    const insightBlock = response?.blocks.find(b => b.type === 'insight')?.content ?? '';
-
-    const turn: ChatTurn = {
-      user_id: userId, conversation_id: conversationId,
-      session_id: sessionId, message_id: m.id,
-      turn_index: turnIdx, role: 'assistant',
-      raw_user_query: insight.metadata.query,
-      normalized_query: insight.metadata.query.toLowerCase().trim(),
-      detected_intent: insight.query_type,
-      entities: extractEntities(insight.metadata.query),
-      previous_context: previousContext,
-      ml_request_json: {
-        user_id: userId, conversation_id: conversationId,
-        session_id: sessionId, message_id: m.id, turn_index: turnIdx,
-        raw_query: insight.metadata.query,
-        normalized_query: insight.metadata.query.toLowerCase().trim(),
-        intent: insight.query_type, persona,
-        previous_context: previousContext,
-        entities: extractEntities(insight.metadata.query),
-      },
-      ml_response_json: insight as unknown as Record<string, unknown>,
-      simplified_response: response?.ttsHeadline ?? insight.main_summary,
-      final_interpretation: insightBlock,
-      created_at: now, updated_at: now,
-      metadata: {
-        persona,
-        query_type: insight.query_type,
-        confidence: insight.confidence,
-        source: insight.metadata.source,
-        chart_type: insight.chart.primary,
-      },
-    };
-    await saveTurn(turn);
-  } else if (m.sender === 'ai' && !m.rawInsight && m.text) {
-    // Conversational text messages (Greetings, errors)
-    const turn: ChatTurn = {
-      user_id: userId, conversation_id: conversationId,
-      session_id: sessionId, message_id: m.id,
-      turn_index: turnIdx, role: 'assistant',
-      raw_user_query: m.rawQuery ?? '',
-      normalized_query: (m.rawQuery ?? '').toLowerCase().trim(),
-      detected_intent: 'Conversational',
-      entities: {}, previous_context: previousContext,
-      ml_request_json: {}, ml_response_json: {},
-      simplified_response: m.text,
-      final_interpretation: m.text,
-      created_at: now, updated_at: now,
-      metadata: { persona, query_type: 'Conversational', confidence: 1, source: 'System' },
-    };
-    await saveTurn(turn);
-  }
-}
-
-/**
- * Reconstructs a minimal ChatMessage[] from stored ChatTurn[].
- * Used for scroll-back history restoration from the backend.
- * Note: rawInsight is not stored in ChatTurn for size reasons;
- * these restored messages only show text, not interactive charts.
- * For full chart re-render, the user needs to re-query.
- */
-function turnsToMessages(turns: ChatTurn[]): ChatMessage[] {
-  return turns.map(turn => {
-    let response: undefined | ReturnType<typeof buildResponseFromInsight>;
-    let rawInsight: NormalizedInsight | undefined;
-
-    // Reconstruct full charts and insights if available
-    if (turn.role === 'assistant' && turn.ml_response_json && Object.keys(turn.ml_response_json).length > 0) {
-      rawInsight = turn.ml_response_json as unknown as NormalizedInsight;
-      if (rawInsight.chart && rawInsight.chart.primary) {
-        response = buildResponseFromInsight(turn.metadata.persona as Persona || 'Beginner', rawInsight);
-      }
-    }
-
-    return {
-      id: turn.message_id,
-      sender: turn.role === 'user' ? 'user' : 'ai',
-      text: turn.role === 'user' 
-        ? turn.raw_user_query 
-        : (!response ? turn.simplified_response : undefined),
-      rawQuery: turn.raw_user_query,
-      response,
-      rawInsight,
-      isLoading: false,
-    } as ChatMessage;
+  await saveMessage(conversationId, userId, {
+    message_id: m.id,
+    role: m.sender === 'user' ? 'user' : 'assistant',
+    user_query: m.rawQuery ?? m.text ?? '',
+    query_type: m.rawInsight?.query_type ?? (m.sender === 'ai' ? ['Conversational'] : ['Unknown']),
+    ml_output: (m.rawInsight as any) ?? {},
+    simplified_response: m.response?.ttsHeadline ?? m.text ?? '',
+    timestamp: now,
   });
 }

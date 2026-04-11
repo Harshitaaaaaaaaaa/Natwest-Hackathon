@@ -3,6 +3,8 @@ import { useAppContext } from '../stores/appStore';
 import { Sparkles } from 'lucide-react';
 import type { OnboardingAnswers, Persona } from '../types';
 
+const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:3001';
+
 // ================================================================
 // QUESTION DATA
 // ================================================================
@@ -54,30 +56,36 @@ const SLIDE_2_QUESTIONS: Question[] = [
 ];
 
 // ================================================================
-// 6-PERSONA MAPPING ENGINE
+// PERSONA RESOLUTION FROM BACKEND
 // ================================================================
 
-function mapAnswersToPersona(answers: OnboardingAnswers): Persona {
-  const { audience, trust, instinct } = answers;
+async function fetchPersonaFromBackend(answers: Record<string, string>): Promise<Persona> {
+  const payload = {
+    responses: Object.entries(answers).map(([id, value]) => ({ id, value }))
+  };
 
-  // Compliance path — regulators always → Compliance
+  try {
+    const res = await fetch(`${CHAT_API_URL}/api/questionnaire`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.user_type as Persona;
+    }
+  } catch (error) {
+    console.warn('[Onboarding] Backend unavailable, using local fallback.');
+  }
+
+  // Local Fallback if backend is down
+  const { audience, trust, instinct } = answers as any as OnboardingAnswers;
   if (audience === 'regulators') return 'Compliance';
-
-  // Analyst path — solo + evidence/verify → power user
   if (audience === 'me' && (trust === 'raw_math' || instinct === 'verify')) return 'Analyst';
-
-  // Executive path — Board-level audience
   if (audience === 'board') return 'Executive';
-
-  // SME/Manager path — team-level, operational
   if (audience === 'team' && (instinct === 'fix' || instinct === 'explain')) return 'SME';
-
-  // Everyday path — solo, actionable/trend-driven
   if (audience === 'me' && (trust === 'actionable' || trust === 'trend')) return 'Everyday';
-
-  // Catch-all — team + raw math also gets Everyday as default
   if (audience === 'team') return 'Everyday';
-
   return 'Beginner';
 }
 
@@ -107,6 +115,7 @@ export const Onboarding: React.FC = () => {
   const { completeOnboarding, setAppView, setOnboardingAnswers } = useAppContext();
   const [slide, setSlide] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const currentQuestions = slide === 0 ? SLIDE_1_QUESTIONS : SLIDE_2_QUESTIONS;
   const progress = slide === 0 ? 50 : 100;
@@ -115,19 +124,19 @@ export const Onboarding: React.FC = () => {
   const handleSelect = (questionId: string, optionKey: string) =>
     setAnswers(prev => ({ ...prev, [questionId]: optionKey }));
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (slide === 0) {
       setSlide(1);
     } else {
+      setIsSubmitting(true);
       const finalAnswers: OnboardingAnswers = {
         audience: answers.audience as any,
         trust: answers.trust as any,
         instinct: answers.instinct as any,
         visual: answers.visual as any,
       };
-      const persona = mapAnswersToPersona(finalAnswers);
+      const persona = await fetchPersonaFromBackend(answers);
       setOnboardingAnswers(finalAnswers);
-      // completeOnboarding: saves persona, marks done, creates MongoDB conversation
       completeOnboarding(finalAnswers, persona);
       setAppView('transition');
     }
@@ -172,10 +181,10 @@ export const Onboarding: React.FC = () => {
         <div className="mt-8 mb-8 text-center fade-in-up" style={{ animationDelay: '400ms' }}>
           <button
             onClick={handleNext}
-            disabled={!canProceed}
+            disabled={!canProceed || isSubmitting}
             className="glass-card px-10 py-4 text-lg font-semibold text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed hover:text-blue-600 transition-all"
           >
-            {slide === 0 ? 'Continue →' : 'Enter Talk2Data →'}
+            {isSubmitting ? 'Configuring Persona...' : (slide === 0 ? 'Continue →' : 'Enter Talk2Data →')}
           </button>
         </div>
       </div>

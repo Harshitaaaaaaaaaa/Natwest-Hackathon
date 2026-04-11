@@ -21,51 +21,37 @@ const PORT = process.env.PORT || 3001;
 // MONGOOSE SCHEMAS
 // ================================================================
 
-// ChatTurn schema
-const chatTurnSchema = new mongoose.Schema({
-  user_id: { type: String, required: true },
-  conversation_id: { type: String, required: true },
-  session_id: { type: String, required: true },
-  message_id: { type: String, required: true, unique: true },
-  turn_index: { type: Number, required: true },
-  role: { type: String, required: true, enum: ['user', 'assistant'] },
-  
-  raw_user_query: String,
-  normalized_query: String,
-  detected_intent: String,
-  entities: mongoose.Schema.Types.Mixed,
-  previous_context: String,
-  
-  ml_request_json: mongoose.Schema.Types.Mixed,
-  ml_response_json: mongoose.Schema.Types.Mixed,
-  
-  simplified_response: String,
-  final_interpretation: String,
-  related_generic_query_id: String,
-  
-  created_at: String,
-  updated_at: String,
-  metadata: mongoose.Schema.Types.Mixed,
+// 1. Generic Queries Schema (Common query repository)
+const genericQuerySchema = new mongoose.Schema({
+  query_text: { type: String, required: true },
+  query_type: [String],
+  intent: String,
+  usage_count: { type: Number, default: 0 },
+  created_at: { type: Date, default: Date.now },
 });
+const GenericQuery = mongoose.model('GenericQuery', genericQuerySchema, 'generic_queries');
 
-// Create index for fast cursor pagination and sorting (oldest to newest)
-chatTurnSchema.index({ conversation_id: 1, turn_index: 1 });
-const ChatTurn = mongoose.model('ChatTurn', chatTurnSchema, 'user_chat_history');
+// 2. User Conversations Schema (Monolithic document with messages array)
+const messageSchema = new mongoose.Schema({
+  message_id: { type: String, required: true },
+  user_query: { type: String, required: true },
+  query_type: [String],
+  ml_output: mongoose.Schema.Types.Mixed,
+  timestamp: { type: String, required: true },
+}, { _id: false });
 
-
-// Conversation schema
 const conversationSchema = new mongoose.Schema({
   conversation_id: { type: String, required: true, unique: true },
   user_id: { type: String, required: true },
+  user_type: { type: String, required: true },  // 6 Persona mapping
+  dataset_ref: { type: String },
   title: String,
-  persona: String,
-  created_at: String,
-  last_message_at: String,
-  turn_count: Number,
+  created_at: { type: String },
+  messages: [messageSchema],
 });
 
-conversationSchema.index({ user_id: 1, last_message_at: -1 });
-const Conversation = mongoose.model('Conversation', conversationSchema, 'chat_conversations');
+conversationSchema.index({ user_id: 1 });
+const Conversation = mongoose.model('Conversation', conversationSchema, 'user_conversations');
 
 // ================================================================
 // ROUTES
@@ -76,13 +62,47 @@ app.get('/', (req, res) => {
   res.send('Talk2Data Backend Server is running');
 });
 
+// Questionnaire ML Simulation Endpoint
+app.post('/api/questionnaire', (req, res) => {
+  try {
+    const { responses } = req.body;
+    // Map existing answers to original 6 Personas based on weights/values
+    let user_type = 'Beginner';
+    const audience = responses.find(r => r.id === 'audience')?.value;
+    const trust = responses.find(r => r.id === 'trust')?.value;
+    const instinct = responses.find(r => r.id === 'instinct')?.value;
+
+    if (audience === 'regulators') user_type = 'Compliance';
+    else if (audience === 'board') user_type = 'Executive';
+    else if (audience === 'me' && (trust === 'raw_math' || instinct === 'verify')) user_type = 'Analyst';
+    else if (audience === 'team' && (instinct === 'fix' || instinct === 'explain')) user_type = 'SME';
+    else if (audience === 'me' && (trust === 'actionable' || trust === 'trend')) user_type = 'Everyday';
+    else if (audience === 'team') user_type = 'Everyday';
+
+    res.status(200).json({
+      user_type,
+      complexity_level: 3 // generic median
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create conversation metadata
 app.post('/chat/conversations', async (req, res) => {
   try {
     const record = req.body;
     await Conversation.findOneAndUpdate(
       { conversation_id: record.conversation_id },
-      { $set: record },
+      {
+        $set: {
+          user_id: record.user_id,
+          user_type: record.user_type,
+          dataset_ref: record.dataset_ref,
+          title: record.title,
+          created_at: record.created_at
+        }
+      },
       { upsert: true, new: true }
     );
     res.status(200).json({ success: true });
@@ -96,7 +116,7 @@ app.post('/chat/conversations', async (req, res) => {
 app.get('/chat/conversations/:userId', async (req, res) => {
   try {
     const records = await Conversation.find({ user_id: req.params.userId })
-                                      .sort({ last_message_at: -1 });
+      .sort({ created_at: -1 });
     res.status(200).json(records);
   } catch (error) {
     console.error('Error fetching conversations:', error);
@@ -104,63 +124,36 @@ app.get('/chat/conversations/:userId', async (req, res) => {
   }
 });
 
-// Save a turn (message)
+// Save a turn by pushing to messages array
 app.post('/chat/turns', async (req, res) => {
   try {
-    const turn = req.body;
-    await ChatTurn.findOneAndUpdate(
-      { message_id: turn.message_id },
-      { $set: turn },
-      { upsert: true, new: true }
-    );
+    const { conversation_id, message } = req.body;
 
-    // Also update the conversation's last_message_at and turn_count
+    // Push the newest message into the monolithic conversation document
     await Conversation.findOneAndUpdate(
-      { conversation_id: turn.conversation_id },
-      { 
-        $set: { last_message_at: turn.created_at },
-        $inc: { turn_count: 1 } 
-      }
+      { conversation_id: conversation_id },
+      { $push: { messages: message } },
+      { upsert: true, new: true }
     );
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Error saving turn:', error);
+    console.error('Error saving message:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Get history pagination (returns newest N if no cursor, or older N if cursor)
+// Get monolithic conversation history (no cursor needed anymore, we return the doc)
 app.get('/chat/history/:convId', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 40;
-    const cursor = req.query.cursor; // message_id
-    const convId = req.params.convId;
-
-    let query = { conversation_id: convId };
-
-    if (cursor) {
-      // Find the turn of the cursor
-      const cursorTurn = await ChatTurn.findOne({ message_id: cursor });
-      if (cursorTurn) {
-        // We want messages BEFORE the cursor (older messages)
-        query.turn_index = { $lt: cursorTurn.turn_index };
-      }
+    const conv = await Conversation.findOne({ conversation_id: req.params.convId }).lean();
+    if (!conv) {
+      return res.status(200).json({ messages: [] });
     }
-
-    // Since we want to paginate backwards, we should sort by turn_index DESC, grab limit, then reverse
-    let turns = await ChatTurn.find(query)
-      .sort({ turn_index: -1 })
-      .limit(limit)
-      .lean();
-
-    // Reverse to chronological order
-    turns.reverse();
-
     return res.status(200).json({
-      turns,
-      hasMore: turns.length === limit,
-      nextCursor: turns.length > 0 ? turns[0].message_id : null
+      messages: conv.messages,
+      user_type: conv.user_type,
+      dataset_ref: conv.dataset_ref
     });
   } catch (error) {
     console.error('Error fetching history:', error);

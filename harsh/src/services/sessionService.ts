@@ -11,12 +11,12 @@
  */
 
 // ── Storage keys ─────────────────────────────────────────────────
-const KEY_USER_ID  = 't2d_user_id';
-const KEY_CONV_ID  = 't2d_conv_id';
+const KEY_USER_ID = 't2d_user_id';
+const KEY_CONV_ID = 't2d_conv_id';
 const KEY_TURN_IDX = 't2d_turn_idx';
-const KEY_SESSION  = 't2d_session_id';
-const KEY_PERSONA  = 't2d_persona';
-const KEY_ONBOARD  = 't2d_onboarding_done';
+const KEY_SESSION = 't2d_session_id';
+const KEY_PERSONA = 't2d_persona';
+const KEY_ONBOARD = 't2d_onboarding_done';
 const KEY_LOGGED_IN = 't2d_logged_in';
 
 // ── Helpers ──────────────────────────────────────────────────────
