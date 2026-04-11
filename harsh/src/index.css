@@ -1,0 +1,411 @@
+@import "tailwindcss";
+
+/* ================================================================
+   TALK2DATA — GLOBAL DESIGN SYSTEM
+   Focus reset, elevation tokens, glass containers, animations,
+   persona color tokens, and all component styles.
+================================================================ */
+
+/* === GLOBAL FOCUS RESET === */
+*:focus { outline: none !important; }
+button, [role="button"] { outline: none !important; border: none !important; }
+button:focus-visible { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3); }
+
+/* === ELEVATION TOKENS === */
+:root {
+  --elevation-low:  0 4px 12px rgba(31, 38, 135, 0.07);
+  --elevation-mid:  0 8px 28px rgba(31, 38, 135, 0.11);
+  --elevation-high: 0 16px 48px rgba(31, 38, 135, 0.16);
+  --elevation-glow: 0 0 60px rgba(59, 130, 246, 0.07);
+
+  /* === PERSONA COLOR TOKENS (HSL-based, harmonious) === */
+  --persona-beginner-bg:    #EFF6FF;
+  --persona-beginner-fg:    #2563EB;
+  --persona-beginner-dot:   #3B82F6;
+
+  --persona-everyday-bg:    #F0FDF4;
+  --persona-everyday-fg:    #059669;
+  --persona-everyday-dot:   #10B981;
+
+  --persona-sme-bg:         #FFF7ED;
+  --persona-sme-fg:         #C2410C;
+  --persona-sme-dot:        #F97316;
+
+  --persona-executive-bg:   #F5F3FF;
+  --persona-executive-fg:   #7C3AED;
+  --persona-executive-dot:  #8B5CF6;
+
+  --persona-analyst-bg:     #EFF6FF;
+  --persona-analyst-fg:     #1D4ED8;
+  --persona-analyst-dot:    #3B82F6;
+
+  --persona-compliance-bg:  #FFF1F2;
+  --persona-compliance-fg:  #BE123C;
+  --persona-compliance-dot: #F43F5E;
+}
+
+/* === BASE === */
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #E0F2FE 0%, #f0fdf4 50%, #faf5ff 100%);
+  color: #1e293b;
+  min-height: 100vh;
+}
+
+/* === GLASS CONTAINERS === */
+.glass-card {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 20px;
+  box-shadow: var(--elevation-mid);
+  border: none !important;
+  transition: box-shadow 0.3s ease;
+}
+.glass-card:hover { box-shadow: var(--elevation-high); }
+
+.glass-card-low {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  box-shadow: var(--elevation-low);
+  border: none !important;
+}
+
+.glass-card-high {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  border-radius: 24px;
+  box-shadow: var(--elevation-high);
+  border: none !important;
+}
+
+.main-container {
+  background: rgba(255, 255, 255, 0.87);
+  border-radius: 40px;
+  box-shadow: var(--elevation-high), var(--elevation-glow);
+  border: none !important;
+}
+
+/* === SCROLLBAR === */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 99px; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* === ANIMATIONS === */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.15); }
+  50%       { box-shadow: 0 0 20px 4px rgba(59, 130, 246, 0.10); }
+}
+
+.fade-in-up { animation: fadeInUp 0.45s ease-out both; }
+.fade-in    { animation: fadeIn 0.35s ease-out both; }
+.slide-in   { animation: slideIn 0.35s ease-out both; }
+.pulse-glow { animation: pulseGlow 2.5s ease-in-out infinite; }
+
+/* Staggered children */
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 140ms; }
+.stagger > *:nth-child(4) { animation-delay: 210ms; }
+.stagger > *:nth-child(5) { animation-delay: 280ms; }
+
+/* === OPTION PILL (Onboarding) === */
+.option-pill {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(6px);
+  border-radius: 14px;
+  box-shadow: var(--elevation-low);
+  border: none !important;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  text-align: left;
+  width: 100%;
+  font-size: 0.95rem;
+  color: #334155;
+}
+.option-pill:hover {
+  box-shadow: var(--elevation-mid);
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.92);
+}
+.option-pill.selected {
+  background: rgba(59, 130, 246, 0.08);
+  box-shadow: var(--elevation-mid), 0 0 0 2px rgba(59, 130, 246, 0.28);
+  color: #1e40af;
+}
+
+/* === CONFUSION BUTTON === */
+.confusion-btn {
+  background: rgba(248, 250, 252, 0.8);
+  border-radius: 8px;
+  box-shadow: var(--elevation-low);
+  border: none !important;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.confusion-btn:hover {
+  box-shadow: var(--elevation-mid);
+  color: #3b82f6;
+  background: rgba(239, 246, 255, 0.9);
+}
+
+/* === RESPONSE BLOCK === */
+.response-block {
+  background: rgba(255, 255, 255, 0.52);
+  border-radius: 14px;
+  box-shadow: var(--elevation-low);
+  border: none !important;
+  padding: 16px 20px;
+  transition: box-shadow 0.22s ease;
+}
+.response-block:hover { box-shadow: var(--elevation-mid); }
+
+.secondary-visual {
+  background: rgba(248, 250, 252, 0.6);
+  border-left: 3px solid rgba(148, 163, 184, 0.3);
+}
+
+/* === TEXTAREA RESET === */
+textarea:focus { outline: none; box-shadow: none; }
+
+/* ================================================================
+   PERSONA CHIP — top-right badge in ResponseCard
+================================================================ */
+
+.persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: none !important;
+}
+
+.persona-chip-beginner    { background: var(--persona-beginner-bg);    color: var(--persona-beginner-fg); }
+.persona-chip-everyday    { background: var(--persona-everyday-bg);    color: var(--persona-everyday-fg); }
+.persona-chip-sme         { background: var(--persona-sme-bg);         color: var(--persona-sme-fg); }
+.persona-chip-executive   { background: var(--persona-executive-bg);   color: var(--persona-executive-fg); }
+.persona-chip-analyst     { background: var(--persona-analyst-bg);     color: var(--persona-analyst-fg); }
+.persona-chip-compliance  { background: var(--persona-compliance-bg);  color: var(--persona-compliance-fg); }
+
+/* ================================================================
+   PERSONA SWITCHER BUTTON
+================================================================ */
+
+.persona-switcher-btn {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: none !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--elevation-low);
+}
+.persona-switcher-btn:hover { box-shadow: var(--elevation-mid); transform: translateY(-1px); }
+
+.persona-switcher-btn.persona-beginner   { background: var(--persona-beginner-bg);   color: var(--persona-beginner-fg); }
+.persona-switcher-btn.persona-everyday   { background: var(--persona-everyday-bg);   color: var(--persona-everyday-fg); }
+.persona-switcher-btn.persona-sme        { background: var(--persona-sme-bg);        color: var(--persona-sme-fg); }
+.persona-switcher-btn.persona-executive  { background: var(--persona-executive-bg);  color: var(--persona-executive-fg); }
+.persona-switcher-btn.persona-analyst    { background: var(--persona-analyst-bg);    color: var(--persona-analyst-fg); }
+.persona-switcher-btn.persona-compliance { background: var(--persona-compliance-bg); color: var(--persona-compliance-fg); }
+
+/* ================================================================
+   PERSONA DROPDOWN
+================================================================ */
+
+.persona-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(16px);
+  border-radius: 18px;
+  box-shadow: var(--elevation-high);
+  border: none !important;
+  overflow: hidden;
+  animation: fadeInUp 0.18s ease-out;
+  padding-bottom: 6px;
+}
+
+.persona-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  background: transparent;
+  border: none !important;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+.persona-dropdown-item:hover { background: rgba(248, 250, 252, 0.9); }
+.persona-dropdown-item.active { background: rgba(239, 246, 255, 0.8); }
+
+.persona-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.persona-dot.persona-beginner    { background: var(--persona-beginner-dot); }
+.persona-dot.persona-everyday    { background: var(--persona-everyday-dot); }
+.persona-dot.persona-sme         { background: var(--persona-sme-dot); }
+.persona-dot.persona-executive   { background: var(--persona-executive-dot); }
+.persona-dot.persona-analyst     { background: var(--persona-analyst-dot); }
+.persona-dot.persona-compliance  { background: var(--persona-compliance-dot); }
+
+/* ================================================================
+   PERSONA CARD BORDER ACCENT (ResponseCard left accent)
+================================================================ */
+
+.persona-card {
+  border-left: 3px solid transparent !important;
+  transition: border-color 0.3s ease;
+}
+.persona-card.persona-beginner    { border-left-color: var(--persona-beginner-dot) !important; }
+.persona-card.persona-everyday    { border-left-color: var(--persona-everyday-dot) !important; }
+.persona-card.persona-sme         { border-left-color: var(--persona-sme-dot) !important; }
+.persona-card.persona-executive   { border-left-color: var(--persona-executive-dot) !important; }
+.persona-card.persona-analyst     { border-left-color: var(--persona-analyst-dot) !important; }
+.persona-card.persona-compliance  { border-left-color: var(--persona-compliance-dot) !important; }
+
+/* ================================================================
+   AUDIT BANNER (Compliance)
+================================================================ */
+
+.audit-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 241, 242, 0.8);
+  border-radius: 10px;
+  color: #be123c;
+  font-size: 0.72rem;
+  border: none !important;
+}
+
+/* ================================================================
+   KPI CARD
+================================================================ */
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 20px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 18px;
+  box-shadow: var(--elevation-mid);
+  border: none !important;
+  text-align: center;
+}
+.kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.kpi-value {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+}
+.kpi-delta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.kpi-prev {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+/* ================================================================
+   BULLET CHART
+================================================================ */
+
+.bullet-chart { padding: 8px 0; }
+.bullet-track {
+  position: relative;
+  height: 16px;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 99px;
+  overflow: visible;
+}
+.bullet-range {
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: rgba(226, 232, 240, 0.6);
+}
+.bullet-bar {
+  position: absolute;
+  top: 2px; bottom: 2px; left: 0;
+  border-radius: 99px;
+  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.bullet-target-line {
+  position: absolute;
+  top: -4px; bottom: -4px;
+  right: 0;
+  width: 3px;
+  background: #1e293b;
+  border-radius: 99px;
+}
+
+/* ================================================================
+   TREEMAP CONTAINER
+================================================================ */
+
+.treemap-container {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* ================================================================
+   RECHARTS OVERRIDES
+================================================================ */
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #e2e8f0;
+  stroke-opacity: 0.45;
+}
+.recharts-tooltip-wrapper { pointer-events: none; }
