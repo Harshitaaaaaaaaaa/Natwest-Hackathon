@@ -11,24 +11,24 @@ const getUserProfile = async (req, res) => {
             return res.status(400).json({ message: 'Username is required' });
         }
 
-        // Try to find the user
+        // Check if user already exists
         let user = await UserProfile.findOne({ username });
         let isNewUser = false;
 
-        // If user doesn't exist, create a new profile
         if (!user) {
-            isNewUser = true;
+            // Create new user
             user = await UserProfile.create({
                 username,
                 personaTier: 'Beginner',
-                complexityScore: 2
+                complexityScore: 2,
             });
+            isNewUser = true;
         }
 
         res.status(200).json({ ...user.toObject(), isNewUser });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server Error' });
+        console.error('[userController] Error:', error.message);
+        res.status(500).json({ message: 'Server Error', error: error.message });
     }
 };
 

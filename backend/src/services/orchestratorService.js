@@ -1,6 +1,21 @@
 const Groq = require('groq-sdk');
 
-const getCompilerSystemPrompt = (datasetRef) => `
+const getCompilerSystemPrompt = (datasetRef, schema, language) => {
+    const metricCol = schema?.metric_col || 'Sales';
+    const dateCol = schema?.date_col || 'Order Date';
+    const dimCols = schema?.dimension_cols || ["Category", "Sub-Category", "Region", "Segment", "Ship Mode", "State", "Customer Name"];
+    const dateMin = schema?.date_min || null;
+    const dateMax = schema?.date_max || null;
+
+    const dateRangeNote = (dateMin && dateMax)
+        ? `- Date range in dataset: "${dateMin}" to "${dateMax}". ALL time_frames MUST fall within this range.`
+        : `- Date range: unknown. Use a wide range covering several years.`;
+
+    const timeFrameRule = (dateMin && dateMax)
+        ? `- Resolve relative timeframes relative to the dataset's actual end date "${dateMax}", NOT today's real-world date. NEVER generate dates beyond "${dateMax}". For queries with no explicit time (e.g. "which X has lowest Y"), set current.start = "${dateMin}" and current.end = "${dateMax}" to analyse ALL available data.`
+        : `- Resolve relative timeframes into explicit YYYY-MM-DD dates. For queries with no explicit time, use a wide multi-year range.`;
+
+    return `
 You are the Orchestration Compiler for an analytical data engine.
 Your ONLY job is to translate natural language queries into a strict, deterministic JSON Execution Plan.
 You do NOT calculate answers. You do NOT invent data.
@@ -12,17 +27,11 @@ SECURITY GUARDRAILS (ANTI-JAILBREAK):
 
 Available Dataset Context:
 - Dataset: "${datasetRef}"
-- Metric column (numeric): "Sales"  — use for all revenue/sales aggregations
-- Profit column (numeric): "Profit" — use only if the user asks about profit
-- Date column: "Order Date"         — format DD-MM-YYYY, data range 2012 to 2015
+- Metric column (numeric): "${metricCol}"  — use for all primary aggregations
+- Date column: "${dateCol}"         — format DD-MM-YYYY
+${dateRangeNote}
 - Dimensions available:
-    * "Category"      — values: Furniture, Office Supplies, Technology
-    * "Sub-Category"  — e.g. Chairs, Phones, Binders, Storage
-    * "Segment"       — values: Consumer, Corporate, Home Office
-    * "Region"        — values: East, West, Central, South
-    * "Ship Mode"     — values: First Class, Second Class, Standard Class, Same Day
-    * "State"         — US state names
-    * "Customer Name" — individual customer names
+    * ${dimCols.map(d => `"${d}"`).join(', ')}
 
 JSON Schema Requirements:
 You must output a JSON object with EXACTLY these top-level keys:
@@ -30,15 +39,14 @@ You must output a JSON object with EXACTLY these top-level keys:
 2. "context"            — include the original user_query
 3. "analytical_intent"  — query_type MUST be an ARRAY of applicable types from: descriptive, diagnostic, comparative, predictive
                           A single query can belong to MULTIPLE categories. Examples:
-                          - "Show sales and explain why they dropped" → ["descriptive", "diagnostic"]
-                          - "Compare regions over the last quarter" → ["comparative", "descriptive"]
-                          - "What is our total revenue?" → ["descriptive"]
-                          - "Why did profit decline and forecast next quarter" → ["diagnostic", "predictive"]
+                          - "Show trend and explain why they dropped" → ["descriptive", "diagnostic"]
+                          - "Compare segments over the last quarter" → ["comparative", "descriptive"]
+                          - "What is our total metric?" → ["descriptive"]
                           Always include at least one type. Order by relevance (primary type first).
                           For comparative queries also include "comparison_type" (one of the dimension names above)
 4. "data_blueprint"     — include:
      "dataset": "${datasetRef}"
-     "schema_mapping": { "metric_col": "Sales", "date_col": "Order Date", "dimension_cols": ["Category", "Sub-Category", "Region", "Segment"] }
+     "schema_mapping": { "metric_col": "${metricCol}", "date_col": "${dateCol}", "dimension_cols": ${JSON.stringify(dimCols)} }
      "analysis_focus": array of most relevant dimension names
      "execution_scope": { "filters": [], "time_frames": { "current": {"start":"YYYY-MM-DD","end":"YYYY-MM-DD"}, "baseline": {"start":"...","end":"..."} } }
 5. "computation_tasks"  — boolean flags: run_aggregations, run_variance_analysis, run_anomaly_detection, run_forecasting
@@ -46,20 +54,23 @@ You must output a JSON object with EXACTLY these top-level keys:
 7. "output_contract"    — boolean flags: include_summary_levels, include_key_metrics, include_trend, include_breakdown, include_diagnostics, include_prediction, include_comparison, include_chart_data, include_recommendations
 
 Rules:
-- Resolve relative timeframes (e.g., "last year", "Q3 2014") into explicit YYYY-MM-DD start/end dates.
-- Include baseline time_frames only if the query compares to a prior period.
+- ${timeFrameRule}
+- Include baseline time_frames only if the query explicitly compares to a prior period.
 - Set computation_tasks flags to true ONLY when required by the query type(s).
 - Return ONLY valid JSON.
+- You MUST generate your final narrative response entirely in the language corresponding to this ISO code: [${language}]. Do not output English unless the code is 'en'.
 `;
+};
 
-const generateExecutionPlan = async (userText, datasetRef = 'data/Superstore.csv') => {
+const generateExecutionPlan = async (userText, datasetRef = 'data/Superstore.csv', schema = null, language = 'en') => {
     try {
         if (!process.env.GROQ_API_KEY) {
             throw new Error('GROQ_API_KEY is not set');
         }
 
         const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-        const systemPrompt = getCompilerSystemPrompt(datasetRef);
+        const systemPrompt = getCompilerSystemPrompt(datasetRef, schema, language);
+
 
         const response = await groq.chat.completions.create({
             messages: [

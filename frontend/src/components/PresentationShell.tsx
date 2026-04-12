@@ -9,7 +9,10 @@ import { getInsightResponse } from '../services/insightAdapter';
 import { buildResponseFromInsight } from '../utils/responseMapper';
 import { MessageBubble } from './ChatLayout/MessageBubble';
 import { newMessageId } from '../services/sessionService';
-import type { Persona } from '../types';
+import { trackPersonaSwitch, trackQueryComplexity } from '../services/feedbackService';
+import type { Persona, DatasetSchema } from '../types';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 // ================================================================
 // PERSONA CONFIG — icons, colors, descriptions
@@ -65,37 +68,44 @@ const PERSONA_CONFIG: Record<Persona, PersonaConfig> = {
 // EXAMPLE QUERIES — persona-aware
 // ================================================================
 
-const EXAMPLE_QUERIES: Record<Persona, string[]> = {
-  Beginner: [
-    'How is my data looking?',
-    'Is everything okay this month?',
-    'What changed recently?',
-  ],
-  Everyday: [
-    'How is revenue trending?',
-    'What happened to Q3 numbers?',
-    'Compare this month vs last month',
-  ],
-  SME: [
-    'Show me the Q3 performance KPIs',
-    'Compare Q2 vs Q3 spending by department',
-    'Why did costs spike last quarter?',
-  ],
-  Executive: [
-    'What is the bottom line on Q3?',
-    'How does our margin compare to target?',
-    'What is driving the revenue gap?',
-  ],
-  Analyst: [
-    'Show exact quarterly revenue breakdown with deltas',
-    'Compare cohort retention Q2 vs Q3 with statistical significance',
-    'What are the top 5 drivers of the cost variance?',
-  ],
-  Compliance: [
-    'Show auditable revenue figures for Q3 with source citations',
-    'Compare GL entries for Q2 vs Q3 with rule references',
-    'Document the cost variance with full audit trail',
-  ],
+const getDynamicQueries = (persona: Persona, schema: DatasetSchema | null): string[] => {
+  const metric = schema?.metric_col || 'revenue';
+  const dim = schema?.dimension_cols?.[0] || 'department';
+  const dim2 = schema?.dimension_cols?.[1] || 'category';
+
+  switch (persona) {
+    case 'Beginner': return [
+      `What is the total ${metric}?`,
+      `Show me ${metric} by ${dim}`,
+      `What is the highest ${dim} by ${metric}?`,
+    ];
+    case 'Everyday': return [
+      `How is ${metric} trending over time?`,
+      `Compare ${metric} between different ${dim}s`,
+      `Which ${dim} has the lowest ${metric}?`,
+    ];
+    case 'SME': return [
+      `Show me the performance KPIs focusing on ${metric}`,
+      `What is driving the variance in ${metric}?`,
+      `Compare ${metric} across ${dim}s`,
+    ];
+    case 'Executive': return [
+      `What is the bottom line on ${metric}?`,
+      `What factors are driving ${metric}?`,
+      `Compare top ${dim}s by ${metric}`,
+    ];
+    case 'Analyst': return [
+      `Show exact ${metric} breakdown by ${dim} and ${dim2}`,
+      `What are the top drivers of variance in ${metric}?`,
+      `Run descriptive analysis on ${metric} across ${dim}s`,
+    ];
+    case 'Compliance': return [
+      `Show auditable ${metric} figures by ${dim}`,
+      `Compare entries for ${dim} against total ${metric}`,
+      `Document the variance in ${metric} with full audit trail`,
+    ];
+    default: return [`How is ${metric} trending?`];
+  }
 };
 
 // ================================================================
@@ -144,7 +154,11 @@ const PersonaSwitcher: React.FC<PersonaSwitcherProps> = ({ current, onSwitch }) 
             return (
               <button
                 key={p}
-                onClick={() => { onSwitch(p); setOpen(false); }}
+                onClick={() => { 
+                  onSwitch(p); 
+                  setOpen(false); 
+                  if (p !== current) trackPersonaSwitch(p);
+                }}
                 className={`persona-dropdown-item ${isActive ? 'active' : ''}`}
               >
                 <span className={`persona-dot ${c.color}`} />
@@ -174,10 +188,14 @@ export const PresentationShell: React.FC = () => {
     currentPersona, switchPersona,
     isLoading, setIsLoading,
     voiceMode, setVoiceMode,
+    blindMode,
     isRestoring, hasMoreHistory, loadMoreHistory,
     startFreshConversation, logoutUser,
-    datasetRef,
+    datasetRef, datasetSchema,
+    language, setLanguage,
   } = useAppContext();
+
+  const { t } = useTranslation();
 
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -185,6 +203,25 @@ export const PresentationShell: React.FC = () => {
   const recognitionRef = useRef<any>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const pendingBlindVoiceRef = useRef(false); // tracks whether to auto-activate mic after response
+
+  // ── Blind mode: auto-speak helper ───────────────────────────────
+  const blindSpeak = useCallback((text: string) => {
+    if (!blindMode || !text?.trim()) return;
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text.trim());
+    utt.rate = 0.9;
+    // When the response finishes being read AND blind mode mic-auto is pending,
+    // automatically start voice recording for the next query.
+    utt.onend = () => {
+      if (pendingBlindVoiceRef.current) {
+        pendingBlindVoiceRef.current = false;
+        setTimeout(() => toggleRecording(), 400);
+      }
+    };
+    window.speechSynthesis.speak(utt);
+  }, [blindMode]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -223,22 +260,28 @@ export const PresentationShell: React.FC = () => {
     try {
       // 1. Classify intent
       const intent = await classifyIntent(queryText, currentPersona);
+      trackQueryComplexity(intent.query_type);
 
       // --- Conversational Flow ---
       if (intent.query_type.includes('Conversational')) {
         const { handleConversationalQuery } = await import('../services/geminiService');
-        const text = await handleConversationalQuery(queryText, currentPersona);
+        const text = await handleConversationalQuery(queryText, currentPersona, language);
         updateMessage(aiMsgId, {
           isLoading: false,
           text,
           rawQuery: queryText,
         });
+        // Blind mode: auto-read conversational response
+        if (blindMode) {
+          pendingBlindVoiceRef.current = true;
+          blindSpeak(text);
+        }
         return;
       }
 
       // --- Analytical Flow ---
       // 2. Get insight (MLOutputContract) from adapter
-      const insight = await getInsightResponse(queryText, intent, currentPersona, datasetRef || 'data/Superstore.csv');
+      const insight = await getInsightResponse(queryText, intent, currentPersona, datasetRef || 'data/Superstore.csv', datasetSchema, language);
 
       // 3. Build persona-shaped rendered response
       const response = buildResponseFromInsight(currentPersona, insight);
@@ -250,6 +293,15 @@ export const PresentationShell: React.FC = () => {
         rawInsight: insight,   // MLOutputContract
         rawQuery:   queryText,
       });
+
+      // Blind mode: auto-read the analytical headline + insight
+      if (blindMode) {
+        let readText = response.ttsHeadline + '. ';
+        const insightBlock = response.blocks.find(b => b.type === 'insight');
+        if (insightBlock) readText += insightBlock.content;
+        pendingBlindVoiceRef.current = true;
+        blindSpeak(readText);
+      }
     } catch (err) {
       console.error('[PresentationShell] processQuery failed:', err);
       updateMessage(aiMsgId, { isLoading: false, response: undefined });
@@ -261,13 +313,16 @@ export const PresentationShell: React.FC = () => {
 
   const handleAnalyze = () => processQuery(input);
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAnalyze(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAnalyze();
+    }
   };
 
   const toggleRecording = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser. Please use Google Chrome or Edge.");
+      alert(t('voiceNotSupported'));
       return;
     }
 
@@ -318,7 +373,7 @@ export const PresentationShell: React.FC = () => {
     recognition.start();
   };
 
-  const examples = EXAMPLE_QUERIES[currentPersona];
+  const examples = getDynamicQueries(currentPersona, datasetSchema);
 
   return (
     <>
@@ -334,14 +389,15 @@ export const PresentationShell: React.FC = () => {
               <div className="w-9 h-9 glass-card flex items-center justify-center">
                 <Database className="w-4 h-4 text-blue-500" />
               </div>
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">Talk2Data</h1>
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight">{t('appName')}</h1>
             </div>
             <p className="text-slate-500 text-xs leading-relaxed">
-              Ask questions about your data in plain English.
+              {t('tagline')}
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher onLanguageChange={setLanguage} />
             <button
               onClick={() => {
                 if (voiceMode && 'speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -367,11 +423,11 @@ export const PresentationShell: React.FC = () => {
         {/* Persona Switcher */}
         <div className="mb-5">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">
-            Active Persona
+            {t('activePerson')}
           </p>
           <PersonaSwitcher current={currentPersona} onSwitch={switchPersona} />
           <p className="text-xs text-slate-400 mt-2 leading-snug">
-            {PERSONA_CONFIG[currentPersona].description}. Switching re-renders all insights instantly — no new API call.
+            {t('switchPersonaNote')}
           </p>
         </div>
 
@@ -383,7 +439,7 @@ export const PresentationShell: React.FC = () => {
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             className="w-full h-full bg-transparent resize-y text-slate-700 text-sm placeholder:text-slate-400 font-light focus:outline-none"
-            placeholder="e.g. Why did revenue drop in Q3?"
+            placeholder={t('placeholder')}
             style={{ border: 'none', minHeight: '100px' }}
           />
         </div>
@@ -391,7 +447,7 @@ export const PresentationShell: React.FC = () => {
         {/* Example queries */}
         <div className="mb-5 mt-auto">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">
-            Try asking ({currentPersona})
+            {t('tryAsking')} ({t(PERSONA_CONFIG[currentPersona].label.replace(' ', ''))})
           </p>
           <div className="space-y-1.5">
             {examples.map((q, i) => (
@@ -416,7 +472,7 @@ export const PresentationShell: React.FC = () => {
             className={`shrink-0 w-12 h-12 glass-card flex items-center justify-center transition-colors cursor-pointer ${
               isRecording ? 'text-red-500 animate-pulse border-red-200 bg-red-50' : 'text-slate-400 hover:text-blue-500'
             }`}
-            title={isRecording ? "Recording... (click to stop)" : "Voice input (connect mic)"}
+            title={isRecording ? t('recording') : t('voiceInput')}
           >
             <Mic className="w-5 h-5" />
           </button>
@@ -427,7 +483,7 @@ export const PresentationShell: React.FC = () => {
             className="flex-1 h-12 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold rounded-2xl flex items-center justify-center gap-2.5 transition-all text-sm"
             style={{ border: 'none' }}
           >
-            {isLoading ? 'Analyzing...' : 'Analyze'}
+            {isLoading ? t('analyzing') : t('analyze')}
             <Send className="w-4 h-4" />
           </button>
           </div>
@@ -446,10 +502,10 @@ export const PresentationShell: React.FC = () => {
             <div className="w-20 h-20 glass-card-high flex items-center justify-center mb-6 pulse-glow">
               <Sparkles className="w-10 h-10 text-amber-400" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-3 tracking-tight">Ready to analyze</h2>
+            <h2 className="text-2xl font-bold text-slate-800 mb-3 tracking-tight">{t('readyToAnalyze')}</h2>
             <p className="text-slate-500 text-base max-w-md font-light leading-relaxed mb-6">
-              Your insights, charts, and explanations appear here — shaped exactly for{' '}
-              <strong className="text-slate-700">{PERSONA_CONFIG[currentPersona].label}</strong>.
+              {t('readyDescription')}{' '}
+              <strong className="text-slate-700">{t(PERSONA_CONFIG[currentPersona].label.replace(' ', '')) || PERSONA_CONFIG[currentPersona].label}</strong>.
             </p>
 
             {/* Persona demo chips */}
@@ -466,7 +522,7 @@ export const PresentationShell: React.FC = () => {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-slate-400 mt-3">Switch persona to see the same insight rendered differently</p>
+            <p className="text-xs text-slate-400 mt-3">{t('switchPersonaChip')}</p>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto flex flex-col gap-4 pt-6 px-6 pb-20">
@@ -475,7 +531,7 @@ export const PresentationShell: React.FC = () => {
             {isRestoring && (
               <div className="flex items-center justify-center gap-2 py-3 text-slate-400 text-xs animate-pulse">
                 <Clock size={13} />
-                Loading earlier messages…
+                {t('loadingEarlier')}
               </div>
             )}
             {!isRestoring && hasMoreHistory && (
@@ -484,7 +540,7 @@ export const PresentationShell: React.FC = () => {
                 className="flex items-center justify-center gap-2 py-2 text-blue-500 text-xs font-semibold hover:text-blue-700 transition-colors"
               >
                 <RotateCcw size={12} />
-                Load earlier messages
+                {t('loadEarlier')}
               </button>
             )}
 

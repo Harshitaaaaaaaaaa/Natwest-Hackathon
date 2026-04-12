@@ -346,7 +346,7 @@ Text: "${blockContent}"`;
 // Directly responds to greetings and meta-questions via Groq
 // ================================================================
 
-export async function handleConversationalQuery(query: string, persona: Persona): Promise<string> {
+export async function handleConversationalQuery(query: string, persona: Persona, language: string): Promise<string> {
   const fallback = "Hello! I am your Talk2Data assistant. I can analyze revenue, costs, churn, and answer deep operational questions. What can I look up for you today?";
   
   if (!GROQ_API_KEY) return fallback;
@@ -357,7 +357,8 @@ The active interface persona is: ${persona}.
 Your goal is to answer data questions for the user.
 Respond nicely and conversationally in 1-2 sentences.
 Remind the user gently that you can plot charts, run diagnostics, and compare periods.
-Do NOT use markdown. Do NOT use fake data. Reply as an AI assistant.`;
+Do NOT use markdown. Do NOT use fake data. Reply as an AI assistant.
+You MUST generate your final narrative response entirely in the language corresponding to this ISO code: [${language}]. Do not output English unless the code is 'en'.`;
 
     const text = await groqChat(systemPrompt, `The user just said: "${query}"`);
     return text || fallback;

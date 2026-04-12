@@ -1,79 +1,177 @@
-# Talk to Data
+# Talk2Data — Unified Analytical Platform
 
-## Overview
-"Talk to Data" is an intelligent, self-service analytics platform designed to democratize access to business data. The project solves the problem of data gatekeeping by allowing non-technical users to query complex datasets using simple natural language. Instead of navigating complicated BI tools, target users (ranging from beginners to executives) can simply ask questions and receive deterministic financial metrics paired with tailored, persona-driven explanations.
+> Ask questions in plain language. Get rigorous, persona-aware insights powered by a Python execution engine, Node.js orchestrator, and React frontend — with full multilingual support for 11 languages.
 
-## Features
-- **Conversational Analytics:** Chat interface that accepts natural language queries.
-- **Persona-Driven Explanations:** Real-time LLM-driven modifications of summaries adapting to Beginner, Analyst, Executive, and other personas.
-- **Deterministic Math Engine:** Pure mathematical computation using statistical processing (Pandas) decoupled from LLM hallucinations.
-- **Multi-Intent Analysis:** Supports identifying multiple intents (e.g. Descriptive + Diagnostic) in a single query and merging the execution results.
-- **Dynamic Dataset Pipeline:** Extensible execution engine parameterized to evaluate static CSV files or dynamically generated user-uploaded datasets.
-- **Data Security Guardrails:** Includes a localized execution sandbox that strictly blocks Local File Inclusion (LFI), system state tampering, and LLM prompt/jailbreak injection natively.
-- **Microservices Architecture:** Fully decoupled systems enabling parallel execution, graceful error handling, and robust scalability.
-- **Graceful Fallbacks:** Automated mock-data adapters ensure the UI never crashes even if backend connections fail.
+---
 
-## Architecture Overview
-The system relies on a secure **3-pillar Microservice Monorepo** pattern:
-1. **React Frontend (Port 3000):** A highly responsive, Vite-powered UI handling the chat view, visualizations, and Gemini-based persona summaries. 
-2. **Node.js Orchestrator (Port 5000):** The central nervous system. It compiles natural language (via Groq API) into a strict Data Blueprint Execution Plan and handles API routing, MongoDB tracking, and graceful degradation.
-3. **Python FastAPI Engine (Port 8000):** A deterministic execution layer. It receives the JSON Execution Plan from the Orchestrator, dynamically injects user-uploaded or global CSV data safely avoiding path traversal attacks, and returns pure numbers/arrays without any text generation.
+## Architecture
 
-## Tech Stack
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, Lucide Icons, Framer Motion
-- **Backend:** Node.js, Express.js, MongoDB (Mongoose)
-- **Math Engine:** Python, FastAPI, Pandas, Scikit-learn, Uvicorn
-- **AI Models:** Groq SDK (Llama 3.3 for Execution Plan), Google Generative AI (Gemini 2.5 Flash for Persona Text Gen)
+```
+talk2data/
+├── frontend/          React 19 + Vite + i18n (11 languages) + Blind Mode
+├── backend/           Node.js + Express — LLM orchestrator (Groq)
+└── execution_engine/  Python + FastAPI — pure-math computation engine
+```
 
-## Setup Instructions
-Follow these commands to seamlessly boot the entire monorepo locally.
+| Layer | Port | Purpose |
+|-------|------|---------|
+| **Frontend** | `5173` | React SPA — persona switcher, language switcher, voice I/O, chart rendering |
+| **Backend** | `5000` | Node.js orchestrator — intent classification via Groq LLM, MongoDB persistence |
+| **Execution Engine** | `8000` | Python FastAPI — descriptive, diagnostic, predictive, comparative analytics |
 
-**1. Clone the repository and configure environments:**
-\`\`\`bash
-# Create Backend .env
-cd backend
-cp .env.example .env
-# Edit .env and supply your MONGODB_URI and GROQ_API_KEY
+---
 
-# Create Execution Engine .env
-cd ../execution_engine
-cp .env.example .env
+## Quick Start
 
-# Configure Frontend
-# Set up a .env inside `frontend/` containing your VITE_GEMINI_API_KEY
-\`\`\`
+### Prerequisites
+- **Node.js** ≥ 18
+- **Python** ≥ 3.10
+- **MongoDB Atlas** connection string (or local MongoDB)
+- **Groq API Key** (free at [console.groq.com](https://console.groq.com))
 
-**2. Install Dependencies:**
-\`\`\`bash
-# Backend dependencies
-cd backend
-npm install
+### 1. Clone & configure environment
 
-# Frontend dependencies
-cd ../frontend
-npm install
+```bash
+git clone <repo-url> talk2data && cd talk2data
 
-# Execution engine dependencies
-cd ../execution_engine
-pip install -r requirements.txt
-\`\`\`
+# Backend
+cp backend/.env.example backend/.env
+# Edit backend/.env → set MONGODB_URI and GROQ_API_KEY
 
-**3. Run the Global Startup Script:**
-Ensure you are at the project root folder.
-\`\`\`bash
+# Frontend
+cp frontend/.env.example frontend/.env
+# Edit frontend/.env → set VITE_GROQ_API_KEY
+```
+
+### 2. Install dependencies
+
+```bash
+# Backend
+cd backend && npm install && cd ..
+
+# Frontend
+cd frontend && npm install && cd ..
+
+# Execution Engine
+cd execution_engine && pip install -r requirements.txt && cd ..
+```
+
+### 3. Start all services
+
+**Option A — Manual (3 terminals):**
+
+```bash
+# Terminal 1: Python Engine
+cd execution_engine && python -m uvicorn src.main:app --port 8000
+
+# Terminal 2: Node Backend
+cd backend && node src/server.js
+
+# Terminal 3: React Frontend
+cd frontend && npm run dev
+```
+
+**Option B — Single script (Windows):**
+
+```bat
 scripts\start_all.bat
-\`\`\`
-*(This master script automatically opens 3 partitioned CMD windows booting all services in parallel).*
+```
 
-## Usage Examples
-To explore the system, type the following natural language questions into the Chat UI:
-- **Descriptive:** *"What is our current monthly spending?"*
-- **Comparative:** *"How did February revenue compare against January?"*
-- **Diagnostic:** *"Why did our costs spike so dramatically last month?"*
-- **Predictive:** *"Based on the trajectory, what will the spending look like next week?"*
+### 4. Open the app
 
-## Limitations & Future Improvements
-While structurally complete, there are several open areas for optimization:
-- **Database Reliance:** The Python Math Engine natively targets flat files (`data/` or `uploads/`). Future iterations should securely implement live read-only SQL queries via DuckDB/Snowflake pipelines mapping database configurations into the Execution Plan schema mapping.
-- **Graphing Interactivity:** Chart definitions currently rely on fixed visual structures and simple fallback tables; deeper Recharts implementations are planned to support complex multi-axis combinations.
-- **User Authentication:** No hard session JWTs or OAuth systems are configured yet, relying purely on mock session states.
+Navigate to **http://localhost:5173** in your browser.
+
+---
+
+## Key Features
+
+### From Harsh's Engine
+- **Universal CSV Loader** — 5 encodings × 7 date formats (auto-detected)
+- **Z-Score Anomaly Detection** — identifies statistical outliers with root-cause analysis
+- **6-Month Multi-Period Forecast** — with MAPE calculation and confidence intervals
+- **Period-Over-Period Comparison** — delta charts with dynamic metric-aware titles
+- **Advanced ChartRenderer** — 8+ chart types including Waterfall and DivergingBar
+
+### From Shrey's Frontend
+- **11-Language i18n** — English, Hindi, Bengali, Telugu, Marathi, Tamil, Spanish, French, Mandarin, Arabic, German
+- **RTL Support** — full Arabic layout support
+- **Blind Mode** — hold spacebar 5s to activate self-voicing (Web Speech API)
+- **Voice Input** — speak queries via microphone
+- **Language-Aware LLM** — AI responses generated natively in the selected language
+
+### Shared
+- **6 Personas** — Beginner, Everyday, SME, Executive, Analyst, Compliance
+- **Instant Persona Re-rendering** — switch personas without re-querying the API
+- **Session Persistence** — MongoDB-backed conversation history with localStorage cache
+- **Dynamic Schema Detection** — auto-profiles uploaded CSVs for intelligent query generation
+
+---
+
+## Environment Variables
+
+### Backend (`backend/.env`)
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MONGODB_URI` | ✅ | MongoDB Atlas connection string |
+| `GROQ_API_KEY` | ✅ | Groq API key for LLM intent classification |
+| `PORT` | ❌ | Server port (default: `5000`) |
+
+### Frontend (`frontend/.env`)
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_GROQ_API_KEY` | ✅ | Groq API key for Gemini intent classification |
+| `VITE_CHAT_API_URL` | ❌ | Backend URL (default: `http://localhost:5000`) |
+
+---
+
+## Project Structure
+
+```
+├── backend/
+│   └── src/
+│       ├── controllers/     queryController.js
+│       ├── models/          UserProfile, Conversation (Mongoose)
+│       ├── routes/          query, upload, chat, dataset, user, questionnaire
+│       ├── services/        orchestratorService.js (LLM pipeline)
+│       ├── utils/           db.js (MongoDB connection)
+│       └── server.js        Express app entry point
+│
+├── execution_engine/
+│   ├── data/                Superstore.csv (enterprise demo dataset)
+│   ├── uploads/             User-uploaded CSVs
+│   └── src/
+│       ├── api/             routes.py, profiler.py
+│       ├── core/            model_handler.py
+│       ├── models/          descriptive, diagnostic, predictive, comparative, utils
+│       └── main.py          FastAPI app entry point
+│
+├── frontend/
+│   └── src/
+│       ├── components/      FileUploader, PresentationShell, LanguageSwitcher, ResponseCard/
+│       ├── hooks/           useBlindMode.ts
+│       ├── locales/         11 JSON translation files
+│       ├── services/        insightAdapter, geminiService, mongoService, sessionService
+│       ├── stores/          appStore.tsx (global state)
+│       ├── types/           TypeScript interfaces
+│       ├── utils/           responseMapper
+│       ├── i18n.ts          i18next configuration
+│       └── main.tsx         React entry point
+│
+└── scripts/
+    └── start_all.bat        Windows launcher
+```
+
+---
+
+## Deployment Notes
+
+- **Frontend Build**: `cd frontend && npm run build` → outputs to `frontend/dist/`
+- **Serve frontend**: Use any static file server (Nginx, Vercel, Netlify) for `dist/`
+- **Backend**: Deploy to any Node.js host (Railway, Render, AWS EC2)
+- **Engine**: Deploy to any Python host (Railway, Render, AWS EC2) with `uvicorn src.main:app --port 8000`
+
+---
+
+## License
+
+Internal use — NatWest Hackathon 2026.

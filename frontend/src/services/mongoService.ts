@@ -16,6 +16,7 @@
  */
 
 import type { UserConversationRecord, ConversationMessage, ChatMessage } from '../types';
+import { drainEvents } from './feedbackService';
 
 const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
 
@@ -93,10 +94,13 @@ export async function listConversations(userId: string): Promise<UserConversatio
 export async function saveMessage(conversation_id: string, userId: string, message: ConversationMessage): Promise<void> {
   if (CHAT_API_URL) {
     try {
+      // Drain buffered behavior events and piggyback them onto this request
+      const behavior_events = drainEvents();
+
       const res = await fetch(`${CHAT_API_URL}/chat/turns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation_id, message }),
+        body: JSON.stringify({ conversation_id, message, behavior_events, user_id: userId }),
       });
       if (res.ok) {
         return;

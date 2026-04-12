@@ -21,14 +21,9 @@ function newUUID(): string {
   return crypto.randomUUID();
 }
 
-// ── User ID (permanent per device) ───────────────────────────────
-export function getUserId(): string {
-  let id = localStorage.getItem(KEY_USER_ID);
-  if (!id) {
-    id = newUUID();
-    localStorage.setItem(KEY_USER_ID, id);
-  }
-  return id;
+// ── User ID (established at login) ───────────────────────────────
+export function getUserId(): string | null {
+  return localStorage.getItem(KEY_USER_ID);
 }
 
 export function setUserId(id: string): void {
@@ -79,7 +74,7 @@ export function newMessageId(): string {
 // ── Convenience: get all identifiers at once ─────────────────────
 export function getCurrentIds() {
   return {
-    user_id: getUserId(),
+    user_id: getUserId() ?? 'anonymous',
     conversation_id: getConversationId(),
     session_id: getSessionId(),
   };

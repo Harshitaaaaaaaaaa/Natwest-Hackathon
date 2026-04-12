@@ -25,6 +25,22 @@ const userProfileSchema = new mongoose.Schema({
         max: 5,
         default: 2
     },
+    // ── EMA Behavior Scoring ─────────────────────────────────────
+    behaviorScore: {
+        type: Number,
+        min: 1.0,
+        max: 5.0,
+        default: 2.0
+    },
+    totalInteractions: {
+        type: Number,
+        default: 0
+    },
+    lastSuggestedPersona: {
+        type: String,
+        default: null
+    },
+    // ─────────────────────────────────────────────────────────────
     questionnaireAnswers: {
         audience: String,
         trust: String,

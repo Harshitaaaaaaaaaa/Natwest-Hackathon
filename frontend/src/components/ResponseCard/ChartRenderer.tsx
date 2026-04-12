@@ -14,18 +14,59 @@ interface ChartRendererProps {
 }
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
-const fmt = (val: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
+const fmt  = (val: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(val);
 const fmtShort = (val: number) => {
-  if (Math.abs(val) >= 1000) return `${(val / 1000).toFixed(1)}k`;
-  return String(val);
+  if (Math.abs(val) >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(val) >= 1000)      return `${(val / 1000).toFixed(1)}k`;
+  return String(Math.round(val));
 };
 
+// Shared tooltip style (used by simpler charts)
 const TOOLTIP_STYLE = {
-  borderRadius: 12,
-  boxShadow: '0 4px 24px rgba(31,38,135,0.12)',
-  border: 'none',
-  fontSize: 12,
-  background: 'rgba(255,255,255,0.97)',
+  borderRadius: 10, border: '1px solid #e2e8f0',
+  boxShadow: '0 4px 24px rgba(31,38,135,0.10)',
+  fontSize: 12, background: 'rgba(255,255,255,0.97)',
+};
+
+/** true when labels look like YYYY-MM date strings */
+const isTimeSeries = (data: MetricPoint[]): boolean =>
+  data.length > 0 && /^\d{4}-\d{2}/.test(String(data[0]?.label ?? ''));
+
+/**
+ * adaptiveTimeTick — smart X-axis formatter for time-series.
+ *  - Short series (≤ 14 months): show every YYYY-MM label as-is — they fit.
+ *  - Long series (> 14 months): show only the 4-digit year at January entries;
+ *    return '' for all other months → clean year-gap markers.
+ * Tooltip always shows the full month on hover regardless of what's on the axis.
+ */
+const adaptiveTimeTick = (label: string, count: number): string => {
+  if (count <= 14) return label;                    // ≤14 months: show all
+  if (/^\d{4}-01/.test(label)) return label.slice(0, 4); // Jan → year label
+  return '';                                        // all other months → hidden
+};
+
+/** Truncate long category labels for rotated bar charts */
+const catTick = (label: string, max = 16): string =>
+  String(label).length > max ? String(label).slice(0, max - 1) + '\u2026' : String(label);
+
+/** Rich hover tooltip — shows full label + formatted value + optional baseline */
+const RichTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  const val  = payload[0]?.value;
+  const prev = payload[0]?.payload?.prev_value;
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.97)', border: '1px solid #e2e8f0',
+      borderRadius: 10, padding: '8px 12px', fontSize: 12,
+      boxShadow: '0 4px 24px rgba(31,38,135,0.10)', minWidth: 140,
+    }}>
+      <p style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>{label}</p>
+      <p style={{ color: '#3b82f6' }}>Value: <strong>{fmt(val)}</strong></p>
+      {prev != null && prev !== 0 && (
+        <p style={{ color: '#94a3b8', marginTop: 2 }}>Baseline: {fmt(prev)}</p>
+      )}
+    </div>
+  );
 };
 
 const AXIS_TICK = { fill: '#94a3b8', fontSize: 11 };
@@ -38,8 +79,50 @@ const chartWrapper = (children: React.ReactNode, height = 200) => (
   </div>
 );
 
-export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, compact }) => {
-  if (!data || data.length === 0) return null;
+
+export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVisual, data, compact }) => {
+  // ── DATA VALIDATION GUARD ──────────────────────────────────────────
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-full flex items-center justify-center p-6 border border-dashed border-slate-700/50 rounded-xl bg-slate-800/20 text-slate-400 text-sm italic mt-3 h-[100px]">
+        No graphical data available for this specific query.
+      </div>
+    );
+  }
+
+  // Scrub out purely malformed points (e.g. Infinity, NaN that escaped backend)
+  const safeData = data.filter(d => 
+    d.label != null && 
+    d.value != null && 
+    Number.isFinite(d.value)
+  );
+
+  if (safeData.length === 0) {
+    return (
+      <div className="w-full flex items-center justify-center p-6 border border-dashed border-red-900/50 rounded-xl bg-red-900/10 text-red-400 text-sm italic mt-3 h-[100px]">
+        Visual data contained invalid entries (NaN/Infinity) and could not be rendered.
+      </div>
+    );
+  }
+
+  // ── CASCADING FALLBACKS ──────────────────────────────────────────
+  let visual = initialVisual;
+  
+  // Rule 1: A pie chart with too many slices is unreadable. Convert to Bar.
+  if (visual === 'Pie' && safeData.length > 8) {
+    visual = 'Bar';
+  }
+  
+  // Rule 2: Bar charts with extreme lengths (e.g. 50 items) break the container width. Convert to Table.
+  if (['Bar', 'StackedBar', 'Waterfall'].includes(visual) && safeData.length > 15) {
+    visual = 'Table';
+  }
+
+  // Rule 3: If scatter was requested but we don't have prev_values
+  if (visual === 'Scatter' && !safeData.some(d => d.prev_value != null)) {
+    visual = 'Bar';
+  }
+
   const h = compact ? 150 : 200;
 
   switch (visual) {
@@ -47,53 +130,122 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // ============================================================
     // LINE / SPARKLINE
     // ============================================================
-    case 'Line':
+    // ── SPARKLINE (compact, no axis labels) ─────────────────────────
     case 'Sparkline':
       return chartWrapper(
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f040" />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} />
-          <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} width={42} tickFormatter={fmtShort} />
-          <Tooltip formatter={(v: any) => [fmt(v), 'Value']} contentStyle={TOOLTIP_STYLE} />
-          <Line
-            type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2.5}
-            dot={{ r: 4, strokeWidth: 0, fill: '#3b82f6' }}
-            activeDot={{ r: 6, fill: '#2563eb' }}
-          />
+        <LineChart data={safeData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+          <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+          <Tooltip content={<RichTooltip />} />
         </LineChart>,
         h,
       );
 
-    // ============================================================
-    // BAR (standard grouped)
-    // ============================================================
-    case 'Bar':
+    // ── LINE (time-series or category) ──────────────────────────────
+    case 'Line': {
+      const timeSeries = isTimeSeries(safeData);
+      const count = safeData.length;
+
+      // Forecast boundary: first label that is a future month
+      const today = new Date().toISOString().slice(0, 7);
+      const forecastIdx = safeData.findIndex(d => String(d.label) > today);
+      const forecastLabel = forecastIdx >= 0 ? String(safeData[forecastIdx].label) : null;
+
       return chartWrapper(
-        <BarChart data={data} barCategoryGap="30%">
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f040" />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} />
-          <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} width={42} tickFormatter={fmtShort} />
-          <Tooltip formatter={(v: any) => [fmt(v), 'Value']} contentStyle={TOOLTIP_STYLE} />
-          <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={56}>
-            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+        <LineChart data={safeData} margin={{ top: 8, right: 20, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(226,232,240,0.45)" />
+
+          <XAxis
+            dataKey="label"
+            axisLine={false} tickLine={false}
+            tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+            // time-series: adaptive tick (year-only when long, YYYY-MM when short)
+            // category: preserve start+end only
+            interval={timeSeries ? 0 : 'preserveStartEnd'}
+            tickFormatter={timeSeries
+              ? (v: string) => adaptiveTimeTick(v, count)
+              : (v: string) => catTick(v, 12)
+            }
+            height={22}
+          />
+
+          <YAxis axisLine={false} tickLine={false}
+            tick={{ fill: '#94a3b8', fontSize: 11 }}
+            width={54} tickFormatter={fmtShort}
+          />
+
+          {/* Full month + exact value on hover */}
+          <Tooltip content={<RichTooltip />} />
+
+          {/* Violet dashed line where forecast begins */}
+          {forecastLabel && (
+            <ReferenceLine
+              x={forecastLabel} stroke="#a78bfa"
+              strokeDasharray="4 3" strokeWidth={1.5}
+              label={{ value: 'Forecast ▶', position: 'top', fontSize: 9, fill: '#a78bfa' }}
+            />
+          )}
+
+          <Line
+            type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2}
+            dot={count <= 24 ? { r: 3, strokeWidth: 0, fill: '#3b82f6' } : false}
+            activeDot={{ r: 5, fill: '#2563eb', strokeWidth: 0 }}
+          />
+        </LineChart>,
+        compact ? 180 : 240,
+      );
+    }
+
+    // ── BAR (categories) ────────────────────────────────────────────
+    case 'Bar': {
+      const timeSeries = isTimeSeries(safeData);
+      const count = safeData.length;
+      // Rotate only when labels are long category strings (not date strings)
+      const longLabels = !timeSeries && safeData.some(d => String(d.label ?? '').length > 8);
+      const barH = longLabels ? h + 50 : h;
+
+      return chartWrapper(
+        <BarChart
+          data={safeData} barCategoryGap="28%"
+          margin={{ top: 4, right: 8, bottom: longLabels ? 42 : 8, left: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(226,232,240,0.45)" />
+          <XAxis
+            dataKey="label" axisLine={false} tickLine={false}
+            tick={{ fill: '#94a3b8', fontSize: 11,
+                    textAnchor: longLabels ? 'end' : 'middle' }}
+            angle={longLabels ? -38 : 0}
+            interval={timeSeries ? 0 : 'preserveStartEnd'}
+            tickFormatter={timeSeries
+              ? (v: string) => adaptiveTimeTick(v, count)
+              : (v: string) => catTick(v, longLabels ? 14 : 18)}
+            height={longLabels ? 62 : 28}
+          />
+          <YAxis axisLine={false} tickLine={false}
+            tick={{ fill: '#94a3b8', fontSize: 11 }}
+            width={54} tickFormatter={fmtShort}
+          />
+          <Tooltip content={<RichTooltip />} />
+          <Bar dataKey="value" radius={[7, 7, 0, 0]} maxBarSize={54}>
+            {safeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
           </Bar>
         </BarChart>,
-        h,
+        barH,
       );
+    }
 
     // ============================================================
     // DIVERGING BAR — horizontal, positive=green, negative=red
     // ============================================================
     case 'DivergingBar':
       return chartWrapper(
-        <BarChart data={data} layout="vertical" barCategoryGap="25%">
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f040" />
+        <BarChart data={safeData} layout="vertical" barCategoryGap="25%">
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(226,232,240,0.45)" />
           <XAxis type="number" axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={fmtShort} />
-          <YAxis dataKey="label" type="category" axisLine={false} tickLine={false} tick={AXIS_TICK} width={80} />
-          <Tooltip formatter={(v: any) => [fmt(v), 'Value']} contentStyle={TOOLTIP_STYLE} />
+          <YAxis dataKey="label" type="category" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} width={100} tickFormatter={(v) => catTick(String(v), 18)} />
+          <Tooltip content={<RichTooltip />} />
           <ReferenceLine x={0} stroke="#e2e8f0" strokeWidth={1.5} />
           <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
-            {data.map((entry, i) => (
+            {safeData.map((entry, i) => (
               <Cell key={i} fill={entry.value < 0 ? '#ef4444' : '#10b981'} />
             ))}
           </Bar>
@@ -106,14 +258,14 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // ============================================================
     case 'Waterfall':
       return chartWrapper(
-        <BarChart data={data} layout="vertical" barCategoryGap="20%">
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f040" />
+        <BarChart data={safeData} layout="vertical" barCategoryGap="20%">
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(226,232,240,0.45)" />
           <XAxis type="number" axisLine={false} tickLine={false} tick={AXIS_TICK} tickFormatter={fmtShort} />
-          <YAxis dataKey="label" type="category" axisLine={false} tickLine={false} tick={AXIS_TICK} width={90} />
-          <Tooltip formatter={(v: any) => [fmt(v), 'Value']} contentStyle={TOOLTIP_STYLE} />
+          <YAxis dataKey="label" type="category" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} width={110} tickFormatter={(v) => catTick(String(v), 20)} />
+          <Tooltip content={<RichTooltip />} />
           <ReferenceLine x={0} stroke="#94a3b8" strokeDasharray="3 3" />
           <Bar dataKey="value" radius={[0, 8, 8, 0]} maxBarSize={24}>
-            {data.map((entry, i) => (
+            {safeData.map((entry, i) => (
               <Cell
                 key={i}
                 fill={i === 0 ? '#6366f1' : entry.value < 0 ? '#ef4444' : '#10b981'}
@@ -122,21 +274,22 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
             ))}
           </Bar>
         </BarChart>,
-        compact ? 160 : Math.max(180, data.length * 40),
+        compact ? 160 : Math.max(200, safeData.length * 44),
       );
+
 
     // ============================================================
     // STACKED BAR
     // ============================================================
     case 'StackedBar':
       return chartWrapper(
-        <BarChart data={data}>
+        <BarChart data={safeData}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f040" />
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={AXIS_TICK} />
           <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} width={42} tickFormatter={fmtShort} />
           <Tooltip formatter={(v: any) => [fmt(v), 'Value']} contentStyle={TOOLTIP_STYLE} />
           <Bar dataKey="value" stackId="a" radius={[6, 6, 0, 0]} maxBarSize={56}>
-            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+            {safeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
           </Bar>
         </BarChart>,
         h,
@@ -146,7 +299,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // PIE / DONUT
     // ============================================================
     case 'Pie': {
-      const pieData = data.filter(d => d.value > 0).slice(0, 6);
+      const pieData = safeData.filter(d => d.value > 0).slice(0, 6);
       return chartWrapper(
         <PieChart>
           <Pie
@@ -166,7 +319,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // KPI CARD — single metric with delta
     // ============================================================
     case 'KPI': {
-      const kpi = data[0];
+      const kpi = safeData[0];
       if (!kpi) return null;
       const hasDelta = kpi.prev_value != null;
       const deltaPct = hasDelta ? ((kpi.value - kpi.prev_value!) / Math.abs(kpi.prev_value!)) * 100 : null;
@@ -194,7 +347,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // GAUGE — circular progress
     // ============================================================
     case 'Gauge': {
-      const g = data[data.length - 1];
+      const g = data[safeData.length - 1];
       const target = g.prev_value ?? g.value * 1.2;
       const pct = Math.min(Math.max((g.value / target) * 100, 0), 100);
       const circumference = 2 * Math.PI * 45;
@@ -232,7 +385,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // BULLET CHART — actual vs target bar (Executive comparative)
     // ============================================================
     case 'Bullet': {
-      const actual = data[data.length - 1];
+      const actual = data[safeData.length - 1];
       const target = actual.prev_value ?? actual.value * 1.15;
       const pct = Math.min((actual.value / target) * 100, 120);
       const barColor = pct >= 100 ? '#10b981' : pct >= 75 ? '#f59e0b' : '#ef4444';
@@ -262,7 +415,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // SCATTER PLOT — for Analyst comparative
     // ============================================================
     case 'Scatter': {
-      const scData = data.map(d => ({ x: d.prev_value ?? 0, y: d.value, name: d.label }));
+      const scData = safeData.map(d => ({ x: d.prev_value ?? 0, y: d.value, name: d.label }));
       return chartWrapper(
         <ScatterChart>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f040" />
@@ -280,8 +433,8 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
     // TREEMAP — SVG box visualization
     // ============================================================
     case 'Treemap': {
-      const total = data.reduce((s, d) => s + Math.abs(d.value), 0);
-      const sorted = [...data].sort((a, b) => b.value - a.value);
+      const total = safeData.reduce((s, d) => s + Math.abs(d.value), 0);
+      const sorted = [...safeData].sort((a, b) => b.value - a.value);
       let x = 0;
       return (
         <div className="treemap-container mt-3 fade-in" style={{ animationDelay: '200ms' }}>
@@ -324,7 +477,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual, data, comp
               </tr>
             </thead>
             <tbody>
-              {data.map((d, i) => {
+              {safeData.map((d, i) => {
                 const deltaPct = d.delta_pct ?? (
                   d.prev_value != null && d.prev_value !== 0
                     ? ((d.value - d.prev_value) / Math.abs(d.prev_value)) * 100

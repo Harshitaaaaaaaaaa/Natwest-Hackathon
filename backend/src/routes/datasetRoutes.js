@@ -1,0 +1,30 @@
+const express = require('express');
+const axios = require('axios');
+const router = express.Router();
+
+const EXECUTION_ENGINE_URL = process.env.EXECUTION_ENGINE_URL || 'http://localhost:8000';
+
+// @route   POST /api/dataset/profile
+// @desc    Proxies schema profiling request to Python execution engine
+router.post('/profile', async (req, res) => {
+    try {
+        const { dataset_ref } = req.body;
+        if (!dataset_ref) {
+            return res.status(400).json({ error: 'dataset_ref is required' });
+        }
+
+        const pythonRes = await axios.post(`${EXECUTION_ENGINE_URL}/analyze_schema`, {
+            dataset_ref
+        });
+
+        res.status(200).json(pythonRes.data);
+    } catch (error) {
+        console.error('Dataset Profile Proxy Error:', error.response?.data || error.message);
+        res.status(500).json({
+            error: 'Failed to profile dataset',
+            details: error.response?.data || error.message
+        });
+    }
+});
+
+module.exports = router;

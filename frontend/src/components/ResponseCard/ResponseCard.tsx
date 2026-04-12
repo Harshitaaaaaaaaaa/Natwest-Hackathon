@@ -6,18 +6,20 @@ import { EvidenceDrawer } from './EvidenceDrawer';
 import { ArrowRight, Volume2, HelpCircle, X, AlertCircle, TrendingUp } from 'lucide-react';
 import { useAppContext } from '../../stores/appStore';
 import { simplifyBlock, type SimplifyContext } from '../../services/geminiService';
+import { trackEvent } from '../../services/feedbackService';
+import { useTranslation } from 'react-i18next';
 
 // ================================================================
 // CONFUSION BUTTON LABELS PER PERSONA
 // ================================================================
 
-const CONFUSION_LABEL: Record<Persona, string> = {
-  Beginner:   '? Help',
-  Everyday:   '? Explain',
-  SME:        '? Detail',
-  Executive:  '? So what',
-  Analyst:    '? Methodology',
-  Compliance: '? Audit note',
+const CONFUSION_LABEL_KEYS: Record<Persona, string> = {
+  Beginner:   'response.help',
+  Everyday:   'response.explain',
+  SME:        'response.detail',
+  Executive:  'response.soWhat',
+  Analyst:    'response.methodology',
+  Compliance: 'response.auditNote',
 };
 
 // ================================================================
@@ -33,16 +35,19 @@ const BlockWithConfusion: React.FC<{
   const [isLoading, setIsLoading] = useState(false);
   const [dynamicExplanation, setDynamicExplanation] = useState<string | null>(null);
   const { currentPersona } = useAppContext();
+  const { t } = useTranslation();
 
   const handleToggle = async () => {
     if (!showSimplified && !dynamicExplanation) {
+      if (currentPersona === 'Analyst') trackEvent('methodology_clicked');
+      else trackEvent('confusion_clicked');
       setShowSimplified(true);
       setIsLoading(true);
       try {
         const text = await simplifyBlock(block.content, block.type, currentPersona, context);
         setDynamicExplanation(text);
       } catch {
-        setDynamicExplanation('Unable to load explanation right now.');
+        setDynamicExplanation(t('response.unableToLoad'));
       } finally {
         setIsLoading(false);
       }
@@ -51,7 +56,7 @@ const BlockWithConfusion: React.FC<{
     }
   };
 
-  const btnLabel = CONFUSION_LABEL[currentPersona] ?? '?';
+  const btnLabel = t(CONFUSION_LABEL_KEYS[currentPersona]) ?? '?';
 
   return (
     <div className="response-block relative group">
@@ -59,10 +64,10 @@ const BlockWithConfusion: React.FC<{
       <button
         onClick={handleToggle}
         className="confusion-btn mt-2 flex items-center gap-1"
-        title="Get a simpler explanation using AI"
+        title={t('response.help')}
       >
         {showSimplified ? <X size={11} /> : <HelpCircle size={11} />}
-        {showSimplified ? 'Hide explanation' : btnLabel}
+        {showSimplified ? t('response.hideExplanation') : btnLabel}
       </button>
 
       <div
@@ -80,7 +85,7 @@ const BlockWithConfusion: React.FC<{
                   style={{ animationDelay: `${d}ms` }}
                 />
               ))}
-              <span className="text-slate-500 ml-2 text-xs font-medium">Simplifying...</span>
+              <span className="text-slate-500 ml-2 text-xs font-medium">{t('response.simplifying')}</span>
             </div>
           ) : (
             <>💡 {dynamicExplanation ?? block.simplified}</>
@@ -149,7 +154,8 @@ export interface ResponseCardProps {
 }
 
 export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionClick }) => {
-  const { currentPersona, voiceMode } = useAppContext();
+  const { currentPersona, voiceMode, blindMode } = useAppContext();
+  const { t } = useTranslation();
 
   const isCompliance = currentPersona === 'Compliance';
   const isAnalyst    = currentPersona === 'Analyst';
@@ -170,8 +176,8 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
   };
 
   React.useEffect(() => {
-    if (voiceMode) readAloud();
-    return () => { if (voiceMode) window.speechSynthesis.cancel(); };
+    if (voiceMode || blindMode) readAloud();
+    return () => { if (voiceMode || blindMode) window.speechSynthesis.cancel(); };
   }, []);
 
   // ── Simplify context ──────────────────────────────────────────────
@@ -211,7 +217,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
         <button
           onClick={readAloud}
           className="p-1.5 rounded-full text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors shadow-sm bg-white/50"
-          title="Read aloud"
+          title={t('response.readAloud')}
         >
           <Volume2 size={15} />
         </button>
@@ -221,7 +227,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
       {response._originalInsight?.warnings && response._originalInsight.warnings.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1 mb-3">
           <div className="flex items-center gap-2 text-red-700 font-bold text-sm">
-            <AlertCircle size={16} /> System Warnings
+            <AlertCircle size={16} /> {t('response.systemWarnings')}
           </div>
           <ul className="list-disc pl-5 text-sm text-red-600 font-medium">
             {response._originalInsight.warnings.map((w, i) => (
@@ -270,7 +276,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
         if (block.type === 'secondary_chart' && block.chartData && block.chartData.length > 0 && block.chartType) {
           return (
             <div key={i} className="response-block secondary-visual">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Supporting View</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">{t('response.supportingView')}</p>
               <ChartRenderer visual={block.chartType} data={block.chartData} compact />
             </div>
           );
@@ -279,7 +285,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
         if (block.type === 'table') {
           return (
             <div key={i} className="response-block">
-              <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Exact Record Values</p>
+              <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">{t('response.exactRecordValues')}</p>
               <ChartRenderer visual="Table" data={block.tableData ?? block.chartData ?? []} />
               <p className="text-xs text-slate-500 mt-3 leading-relaxed">{block.content}</p>
             </div>
@@ -313,7 +319,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
       {/* Diagnostics / Anomaly Pills */}
       {diagBlocks.length > 0 && (
         <div className="space-y-2 pt-1">
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Key Drivers & Anomalies</p>
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">{t('response.keyDrivers')}</p>
           <div className="flex flex-wrap gap-2">
             {diagBlocks.map((b, i) => <DiagnosticPill key={i} text={b.content} />)}
           </div>
@@ -324,12 +330,15 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({ response, onActionCl
       {actionBlocks.length > 0 && (
         <div className="space-y-2 pt-1">
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3 mt-4">
-            Recommended Next Steps
+            {t('response.recommendedNextSteps')}
           </p>
           {actionBlocks.map((block, i) => (
             <BlockWithConfusion key={i} block={block} context={simplifyCtx}>
               <button
-                onClick={() => onActionClick?.(block.content)}
+                onClick={() => {
+                  trackEvent('action_followed');
+                  onActionClick?.(block.content);
+                }}
                 className="flex items-center gap-2 px-4 py-2 glass-card-low text-slate-700 text-sm font-semibold hover:text-blue-600 hover:shadow-md transition-all cursor-pointer w-full text-left"
               >
                 {block.content}

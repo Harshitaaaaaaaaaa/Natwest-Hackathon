@@ -13,7 +13,7 @@ import React, {
 } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  Persona, ChatMessage, OnboardingAnswers, MLOutputContract,
+  Persona, ChatMessage, OnboardingAnswers, MLOutputContract, DatasetSchema
 } from '../types';
 import { buildResponseFromInsight, reRenderWithPersona } from '../utils/responseMapper';
 import {
@@ -52,17 +52,25 @@ interface AppContextState {
   // Onboarding
   onboardingAnswers: OnboardingAnswers | null;
   setOnboardingAnswers: (a: OnboardingAnswers) => void;
+  hasCompletedOnboarding: boolean;
+  setHasCompletedOnboarding: (v: boolean) => void;
 
   // Accessibility
   voiceMode: boolean;
   setVoiceMode: (v: boolean) => void;
+  blindMode: boolean;
+  setBlindMode: (v: boolean) => void;
 
   // Session IDs
-  userId: string;
+  userId: string | null;
   conversationId: string;
   sessionId: string;
   datasetRef: string | null;
   setDatasetRef: (ref: string) => void;
+  datasetSchema: DatasetSchema | null;
+  language: string;
+  setLanguage: (lang: string) => void;
+  setDatasetSchema: (schema: DatasetSchema | null) => void;
 
   // History scroll-back
   isRestoring: boolean;
@@ -79,7 +87,7 @@ const AppContext = createContext<AppContextState | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // ── Session IDs ──────────────────────────────────────────────────
-  const [userId, setUserIdState]             = useState(getUserId());
+  const [userId, setUserIdState]             = useState<string | null>(getUserId());
   const [conversationId, setConversationId]  = useState(getConversationId());
   const sessionId = useRef(getSessionId()).current;
 
@@ -92,13 +100,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ── State ────────────────────────────────────────────────────────
   const [currentPersona, setCurrentPersonaRaw] = useState<Persona>('Beginner');
   const [datasetRef, setDatasetRef] = useState<string | null>(null);
+  const [datasetSchema, setDatasetSchema] = useState<DatasetSchema | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [appView, setAppView] = useState<AppView>(resolveInitialView);
   const [onboardingAnswers, setOnboardingAnswers] = useState<OnboardingAnswers | null>(null);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [blindMode, setBlindMode] = useState(false);
+  const [language, setLanguage] = useState(() => localStorage.getItem('t2d_language') || 'en');
   const [isRestoring, setIsRestoring] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
+
+  // ── Fetch Schema when Dataset changes ─────────────────────────────
+  useEffect(() => {
+    if (!datasetRef) return;
+    const fetchSchema = async () => {
+      try {
+        const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${CHAT_API_URL}/api/dataset/profile`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataset_ref: datasetRef })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.schema) setDatasetSchema(data.schema);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch dynamic dataset schema:', err);
+      }
+    };
+    fetchSchema();
+  }, [datasetRef]);
 
   // ── Fetch Profile on Mount ────────────────────────────────────────
   useEffect(() => {
@@ -116,12 +150,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (res.ok) {
           const profile = await res.json();
           if (profile.hasCompletedOnboarding) {
+            setHasCompletedOnboarding(true);
             setCurrentPersonaRaw((profile.personaTier as Persona) || 'Beginner');
             if (profile.datasetRef) setDatasetRef(profile.datasetRef);
-            setAppView('chat');
-          } else {
-            setAppView('upload');
           }
+          setAppView('upload');
         } else {
           setAppView('login');
         }
@@ -150,7 +183,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     (async () => {
       setIsRestoring(true);
       try {
-        const historyRes = await loadHistory(conversationId, userId);
+        const historyRes = await loadHistory(conversationId, userId ?? 'anonymous');
         const { messages: apiMsgs } = historyRes;
 
         if (apiMsgs && apiMsgs.length > 0) {
@@ -276,7 +309,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       void startConversation({
         conversation_id: conversationId,
-        user_id: userId,
+        user_id: userId || 'anonymous',
         user_type: persona,
         dataset_ref: datasetRef,
         title: 'New Conversation',
@@ -292,7 +325,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newId = sessionStartNew();
     void startConversation({
       conversation_id: newId,
-      user_id: userId,
+      user_id: userId || 'anonymous',
       user_type: currentPersona,
       dataset_ref: datasetRef,
       title: 'New Conversation',
@@ -377,9 +410,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         appView, setAppView,
         completeOnboarding,
         onboardingAnswers, setOnboardingAnswers,
+        hasCompletedOnboarding, setHasCompletedOnboarding,
         voiceMode, setVoiceMode,
+        blindMode, setBlindMode,
         userId, conversationId, sessionId,
         datasetRef, setDatasetRef,
+        datasetSchema, setDatasetSchema,
+        language, setLanguage,
         isRestoring, hasMoreHistory, loadMoreHistory,
         startFreshConversation, loginUser, logoutUser,
       }}
@@ -401,11 +438,11 @@ export const useAppContext = () => {
 
 async function persistMsg(
   m: ChatMessage,
-  userId: string,
+  userId: string | null,
   conversationId: string,
 ): Promise<void> {
   const now = new Date().toISOString();
-  await saveMessage(conversationId, userId, {
+  await saveMessage(conversationId, userId || 'anonymous', {
     message_id: m.id,
     role: m.sender === 'user' ? 'user' : 'assistant',
     user_query: m.rawQuery ?? m.text ?? '',

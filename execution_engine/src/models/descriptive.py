@@ -1,7 +1,8 @@
 import os
 import pandas as pd
+import numpy as np
 from src.core.schema import base_response
-from src.models.utils import load_csv, apply_filters, resolve_secure_path
+from src.models.utils import load_csv, apply_filters, resolve_secure_path, clean_dataframe, build_ui_payload
 
 
 def descriptive_model(payload):
@@ -32,6 +33,9 @@ def descriptive_model(payload):
         # Apply any explicit filters from the execution plan
         filters = blueprint.get("execution_scope", {}).get("filters", [])
         df = apply_filters(df, filters)
+        
+        # CLEAN DATA: ensure no np.nan, np.inf that crash json/calculations
+        df = clean_dataframe(df)
 
         # ── Time frame filtering ────────────────────────────────────
         time_frames  = blueprint["execution_scope"]["time_frames"]
@@ -42,6 +46,15 @@ def descriptive_model(payload):
             (df[date_col] >= current_tf["start"]) &
             (df[date_col] <= current_tf["end"])
         ].copy()
+
+        # SAFETY FALLBACK: If the LLM generated dates outside the dataset range,
+        # the filter returns 0 rows. In that case, use the entire dataset.
+        if current_df.empty:
+            response["warnings"].append(
+                f"Time filter ({current_tf['start']} → {current_tf['end']}) returned no data. "
+                f"Using full dataset range instead."
+            )
+            current_df = df.copy()
 
         baseline_df = (
             df[
@@ -99,87 +112,87 @@ def descriptive_model(payload):
             for _, row in monthly.iterrows()
         ]
 
-        # ── Category breakdown ──────────────────────────────────────
-        total = current_total if current_total != 0 else 1
-        if "Category" in current_df.columns:
-            cat_group = (
-                current_df.groupby("Category")[metric]
-                .sum()
-                .reset_index()
-                .sort_values(metric, ascending=False)
-            )
-            response["breakdown"]["category"] = [
-                {
-                    "label":      row["Category"],
-                    "value":      round(float(row[metric]), 2),
-                    "percentage": round((row[metric] / total) * 100, 2),
-                }
-                for _, row in cat_group.iterrows()
-            ]
+        # ── Dynamic Dimension Breakdowns ────────────────────────────
+        dimension_cols = schema.get("dimension_cols", [])
+        if not dimension_cols:
+            dimension_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
 
-        # ── Sub-Category / Merchant breakdown ───────────────────────
-        if "Sub-Category" in current_df.columns:
-            subcat_group = (
-                current_df.groupby("Sub-Category")[metric]
-                .sum()
-                .reset_index()
-                .sort_values(metric, ascending=False)
-                .head(10)
-            )
-            response["breakdown"]["merchant"] = [
-                {"label": row["Sub-Category"], "value": round(float(row[metric]), 2)}
-                for _, row in subcat_group.iterrows()
-            ]
-
-        # ── Region / Segment breakdown ──────────────────────────────
-        for dim_col, dim_key in [("Region", "region"), ("Segment", "segment")]:
+        # Process the top 4 dimensions from the active schema
+        for dim_col in dimension_cols[:4]:
             if dim_col in current_df.columns:
                 grp = (
                     current_df.groupby(dim_col)[metric]
                     .sum()
                     .reset_index()
-                    .sort_values(metric, ascending=False)
                 )
-                response["breakdown"][dim_key] = [
-                    {
-                        "label":      row[dim_col],
-                        "value":      round(float(row[metric]), 2),
-                        "percentage": round((row[metric] / total) * 100, 2),
-                    }
-                    for _, row in grp.iterrows()
-                ]
+                
+                # Use bucket utility to protect frontend UI lengths
+                dim_key = dim_col.lower().replace(" ", "_").replace("-", "_")
+                response["breakdown"][dim_key] = build_ui_payload(grp, label_col=dim_col, val_col=metric, top_n=7)
 
         # ── Chart data ──────────────────────────────────────────────
-        response["chart_data"] = [
+        primary_dim_key = dimension_cols[0].lower().replace(" ", "_").replace("-", "_") if dimension_cols else None
+        
+        chart_data = [
             {
-                "chart_id":   "monthly_sales_trend",
+                "chart_id":   "monthly_trend",
                 "chart_type": "line",
-                "title":      "Monthly Sales Trend",
+                "title":      f"Monthly {metric} Trend",
                 "x_axis":     [r["label"] for r in response["breakdown"]["time"]],
-                "series":     [{"name": "Sales", "values": [r["value"] for r in response["breakdown"]["time"]]}],
-            },
-            {
-                "chart_id":   "category_breakdown",
-                "chart_type": "bar",
-                "title":      "Sales by Category",
-                "x_axis":     [r["label"] for r in response["breakdown"]["category"]],
-                "series":     [{"name": "Sales", "values": [r["value"] for r in response["breakdown"]["category"]]}],
-            },
+                "series":     [{"name": metric, "values": [r["value"] for r in response["breakdown"]["time"]]}],
+            }
         ]
+
+        if primary_dim_key and primary_dim_key in response["breakdown"]:
+            primary_data = response["breakdown"][primary_dim_key]
+            chart_data.append({
+                "chart_id":   f"{primary_dim_key}_breakdown",
+                "chart_type": "bar",
+                "title":      f"{metric} by {dimension_cols[0]}",
+                "x_axis":     [r["label"] for r in primary_data],
+                "series":     [{"name": metric, "values": [r["value"] for r in primary_data]}],
+            })
+        
+        response["chart_data"] = chart_data
 
         # ── Recommendations ─────────────────────────────────────────
         recommendations = []
-        for cat in response["breakdown"]["category"][:2]:
-            recommendations.append({
-                "action":   f"Focus on growing {cat['label']} ({cat['percentage']}% of sales)",
-                "priority": "high" if cat["percentage"] > 40 else "medium",
-                "reason":   f"{cat['label']} is a top revenue category",
-            })
+        if primary_dim_key and primary_dim_key in response["breakdown"]:
+            for item in response["breakdown"][primary_dim_key][:2]:
+                recommendations.append({
+                    "action":   f"Focus on growing {item['label']} ({item['percentage']}% of {metric})",
+                    "priority": "high" if item["percentage"] > 40 else "medium",
+                    "reason":   f"{item['label']} is a top driver of {metric}",
+                })
         response["recommendations"] = recommendations
 
-        # ── Summary delegated to LLM ────────────────────────────────
-        response["summary"] = ""
-        response["summary_levels"] = {"simple": "", "medium": "", "advanced": ""}
+        # ── Interpretable Summary ────────────────────────────────
+        top_dim_text = ""
+        if primary_dim_key and primary_dim_key in response["breakdown"]:
+            top_item = response["breakdown"][primary_dim_key][0]
+            top_dim_text = f" Top {dimension_cols[0]}: {top_item['label']} (${top_item['value']:,.2f}, {top_item['percentage']}%)."
+
+        change_dir_word = "grew" if change_pct > 0 else ("dropped" if change_pct < 0 else "remained stable")
+        baseline_str = f" compared to the prior period (${baseline_total:,.2f})" if baseline_total else ""
+
+        summary = (
+            f"Total {metric} in the selected period is ${current_total:,.2f}{baseline_str}. "
+            f"That represents a {abs(change_pct)}% {change_dir_word} trend.{top_dim_text}"
+        )
+
+        response["summary"] = summary
+        response["summary_levels"] = {
+            "simple":   f"{metric} is ${current_total:,.2f} — it {change_dir_word} by {abs(change_pct)}% vs the prior period.{top_dim_text}",
+            "medium":   summary,
+            "advanced": (
+                f"{metric}: ${current_total:,.2f} (period: {current_tf['start']} to {current_tf['end']}), "
+                f"baseline: ${baseline_total:,.2f}, delta: {change_pct}%. "
+                + ("Breakdowns: " + "; ".join(
+                    [f"{r['label']}=${r['value']:,.2f}" for r in (response["breakdown"].get(primary_dim_key) or [])[:4]]
+                ) if primary_dim_key else "")
+            ),
+        }
+
         response["confidence"] = 0.92
         return response
 

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { EvidenceData } from '../../types';
 import { ChevronDown, Database, Clock, Calculator, ShieldCheck, Filter, AlertTriangle } from 'lucide-react';
+import { trackEvent } from '../../services/feedbackService';
+import { useTranslation } from 'react-i18next';
 
 interface EvidenceDrawerProps {
   evidence: EvidenceData;
@@ -16,20 +18,24 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
   isAnalyst = false,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const { t } = useTranslation();
 
   const showRich = isCompliance || isAnalyst;
 
   return (
     <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(226,232,240,0.5)' }}>
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => {
+          setExpanded(!expanded);
+          if (!expanded) trackEvent('evidence_opened');
+        }}
         className="confusion-btn flex items-center gap-2"
       >
         <ChevronDown
           size={14}
           className={`transform transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
         />
-        {expanded ? 'Hide' : 'Show'} Evidence {isCompliance ? '& Audit Trail' : '& Metadata'}
+        {expanded ? t('evidence.hideEvidence') : t('evidence.showEvidence')} {isCompliance ? t('evidence.auditTrail') : t('evidence.metadata')}
       </button>
 
       <div
@@ -40,7 +46,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {/* Source */}
           <div className="flex flex-col gap-1">
             <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-              <Database size={12} /> Source
+              <Database size={12} /> {t('evidence.source')}
             </span>
             <span className="ml-5 font-mono text-slate-500">{evidence.source}</span>
           </div>
@@ -48,7 +54,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {/* Timestamp */}
           <div className="flex flex-col gap-1">
             <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-              <Clock size={12} /> Timestamp
+              <Clock size={12} /> {t('evidence.timestamp')}
             </span>
             <span className="ml-5 font-mono text-slate-500">{new Date(evidence.timestamp).toLocaleString()}</span>
           </div>
@@ -56,7 +62,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {/* Confidence */}
           <div className="flex flex-col gap-1">
             <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-              <ShieldCheck size={12} /> Confidence
+              <ShieldCheck size={12} /> {t('evidence.confidence')}
             </span>
             <span className="ml-5">{(evidence.confidence * 100).toFixed(1)}%</span>
             <span className="ml-5 text-slate-400">{evidence.notes}</span>
@@ -66,7 +72,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {evidence.filters && showRich && (
             <div className="flex flex-col gap-1">
               <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-                <Filter size={12} /> Query Filters
+                <Filter size={12} /> {t('evidence.queryFilters')}
               </span>
               <code className="ml-5 glass-card-low px-3 py-1.5 text-blue-600 inline-block break-all text-xs">
                 {evidence.filters}
@@ -78,7 +84,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {evidence.formula && (
             <div className="flex flex-col gap-1 pt-1">
               <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-                <Calculator size={12} /> Calculation Formula
+                <Calculator size={12} /> {t('evidence.calculationFormula')}
               </span>
               <code className="ml-5 glass-card-low px-3 py-1.5 text-blue-600 inline-block break-all text-xs">
                 {evidence.formula}
@@ -90,7 +96,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {evidence.auditLog && showRich && (
             <div className="flex flex-col gap-1 pt-1">
               <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-                <ShieldCheck size={12} /> Audit Trail
+                <ShieldCheck size={12} /> {t('evidence.auditTrail').replace('& ', '')}
               </span>
               <span className="ml-5 font-mono text-slate-400 text-xs leading-relaxed break-all">{evidence.auditLog}</span>
             </div>
@@ -100,7 +106,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {evidence.limitations && evidence.limitations.length > 0 && (
             <div className="flex flex-col gap-1 pt-1">
               <span className="flex items-center gap-1.5 font-semibold text-amber-600">
-                <AlertTriangle size={12} /> Limitations
+                <AlertTriangle size={12} /> {t('evidence.limitations')}
               </span>
               <ul className="ml-5 space-y-0.5">
                 {evidence.limitations.map((l, i) => (
@@ -113,7 +119,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({
           {/* Raw Values (Analyst + Compliance always, others on expand) */}
           {showRich && evidence.rawValues.length > 0 && (
             <div className="flex flex-col gap-1 pt-1">
-              <span className="font-semibold text-slate-700">Raw Values</span>
+              <span className="font-semibold text-slate-700">{t('evidence.rawValues')}</span>
               <div className="ml-5 grid grid-cols-2 gap-1">
                 {evidence.rawValues.map((v, i) => (
                   <span key={i} className="font-mono text-slate-500">

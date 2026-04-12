@@ -36,7 +36,7 @@ const listConversations = async (req, res) => {
 
 const saveTurn = async (req, res) => {
   try {
-    const { conversation_id, message } = req.body;
+    const { conversation_id, message, behavior_events, user_id } = req.body;
     
     // Attempt to update an existing message with the same ID
     const updateResult = await Conversation.updateOne(
@@ -53,7 +53,49 @@ const saveTurn = async (req, res) => {
       );
     }
 
-    res.status(200).json({ success: true });
+    // ── Piggybacked behavior scoring ───────────────────────────
+    let scoringResult = null;
+    if (behavior_events && behavior_events.length > 0 && user_id) {
+      try {
+        const UserProfile = require('../models/UserProfile');
+        const { computeScore } = require('../services/scoringService');
+
+        const user = await UserProfile.findOne({ username: user_id });
+        if (user) {
+          const { newScore, newTotal, suggestedPersona } = computeScore(
+            user.behaviorScore ?? 2.0,
+            user.totalInteractions ?? 0,
+            behavior_events
+          );
+
+          const updateFields = {
+            behaviorScore: newScore,
+            totalInteractions: newTotal,
+          };
+
+          // Only update suggested persona if it differs from current
+          if (suggestedPersona !== user.personaTier) {
+            updateFields.lastSuggestedPersona = suggestedPersona;
+          }
+
+          await UserProfile.updateOne(
+            { username: user_id },
+            { $set: updateFields }
+          );
+
+          scoringResult = {
+            behaviorScore: newScore,
+            currentPersona: user.personaTier,
+            suggestedPersona: suggestedPersona !== user.personaTier ? suggestedPersona : null,
+          };
+        }
+      } catch (scoreErr) {
+        // Non-blocking — scoring failure should never break message saving
+        console.warn('[chatController] Scoring piggyback failed:', scoreErr.message);
+      }
+    }
+
+    res.status(200).json({ success: true, scoring: scoringResult });
   } catch (error) {
     console.error('Error saving message:', error);
     res.status(500).json({ error: error.message });

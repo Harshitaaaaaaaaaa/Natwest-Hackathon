@@ -2,42 +2,44 @@ import React, { useEffect, useState } from 'react';
 import { useAppContext } from '../stores/appStore';
 import { Shield } from 'lucide-react';
 import type { Persona } from '../types';
+import { useTranslation } from 'react-i18next';
 
 const TRANSITION_MESSAGES: Record<Persona, string[]> = {
   Beginner: [
-    'Understanding your learning style...',
-    'Configuring a warm, guided experience...',
-    'Ready. Every insight will be explained simply.',
+    'transition.understanding',
+    'transition.warm',
+    'transition.readySimple',
   ],
   Everyday: [
-    'Mapping your workflow preferences...',
-    'Setting up quick, practical answers...',
-    'Ready. Your workspace is optimized for speed and clarity.',
+    'transition.workflow',
+    'transition.practical',
+    'transition.readySpeed',
   ],
   SME: [
-    'Detecting your operational context...',
-    'Configuring KPI dashboards and driver breakdowns...',
-    'Ready. Your workspace is set for team-level insights.',
+    'transition.operational',
+    'transition.kpi',
+    'transition.readyTeam',
   ],
   Executive: [
-    'Understanding your strategic priorities...',
-    'Configuring impact-first, signal-over-noise analysis...',
-    'Ready. Your workspace is tailored for strategic impact.',
+    'transition.strategic',
+    'transition.impact',
+    'transition.readyImpact',
   ],
   Analyst: [
-    'Preparing full-detail analysis mode...',
-    'Loading exact values, filters, and decomposition views...',
-    'Ready. Your workspace is in Analyst power mode.',
+    'transition.detail',
+    'transition.exact',
+    'transition.readyAnalyst',
   ],
   Compliance: [
-    'Activating forensic audit mode...',
-    'Configuring full source trails, timestamps, and traceability...',
-    'Ready. All outputs are audit-ready and policy-mapped.',
+    'transition.forensic',
+    'transition.trails',
+    'transition.readyAudit',
   ],
 };
 
 export const TrustTransition: React.FC = () => {
   const { currentPersona, setAppView } = useAppContext();
+  const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const msgs = TRANSITION_MESSAGES[currentPersona] ?? TRANSITION_MESSAGES.Beginner;
 
@@ -69,7 +71,7 @@ export const TrustTransition: React.FC = () => {
               } ${i === step ? 'text-slate-800' : 'text-slate-400'}`}
               style={{ transitionDelay: `${i * 100}ms` }}
             >
-              {msg}
+              {t(msg)}
             </p>
           ))}
         </div>
@@ -82,7 +84,7 @@ export const TrustTransition: React.FC = () => {
         >
           <Shield className="w-5 h-5 text-emerald-500 shrink-0" />
           <span>
-            Same data. Different presentation. Adapted exactly for your role.
+            {t('transition.trustNote')}
           </span>
         </div>
       </div>

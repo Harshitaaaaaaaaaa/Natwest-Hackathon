@@ -2,6 +2,7 @@ import React from 'react';
 import type { ChatMessage } from '../../types';
 import { User, Sparkles } from 'lucide-react';
 import { ResponseCard } from '../ResponseCard/ResponseCard';
+import { useTranslation } from 'react-i18next';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -9,6 +10,7 @@ interface MessageBubbleProps {
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onActionClick }) => {
+  const { t } = useTranslation();
   const isUser = message.sender === 'user';
 
   return (
@@ -45,7 +47,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onActionC
                       />
                     ))}
                   </div>
-                  <span className="text-sm font-medium">Analyzing your data...</span>
+                  <span className="text-sm font-medium">{t('analyzingData')}</span>
                 </div>
               ) : message.response ? (
                 <div className="w-full">
@@ -57,7 +59,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onActionC
                 </div>
               ) : (
                 <div className="glass-card-low px-5 py-3 text-red-500 text-sm">
-                  Something went wrong. Please try again.
+                  {t('somethingWrong')}
                 </div>
               )}
             </>

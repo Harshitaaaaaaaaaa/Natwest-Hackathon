@@ -1,8 +1,32 @@
 @echo off
-echo Starting all servers...
+echo ============================================
+echo   Talk2Data - Starting All Services
+echo ============================================
+echo.
 
-start cmd /k "cd backend && npm run dev"
-start cmd /k "cd execution_engine && uvicorn src.main:app --reload --port 8000"
-start cmd /k "cd frontend && npm run dev -- --port 3000"
+:: Start Python Execution Engine (port 8000)
+echo [1/3] Starting Python Execution Engine on port 8000...
+start "Execution Engine" cmd /k "cd /d %~dp0..\execution_engine && python -m uvicorn src.main:app --host 0.0.0.0 --port 8000"
 
-echo All servers starting up!
+:: Wait for engine to boot
+timeout /t 3 /nobreak >nul
+
+:: Start Node.js Backend (port 5000)
+echo [2/3] Starting Node.js Backend on port 5000...
+start "Backend" cmd /k "cd /d %~dp0..\backend && node src/server.js"
+
+:: Wait for backend to boot
+timeout /t 2 /nobreak >nul
+
+:: Start Vite Frontend (port 5173)
+echo [3/3] Starting Vite Frontend on port 5173...
+start "Frontend" cmd /k "cd /d %~dp0..\frontend && npm run dev"
+
+timeout /t 3 /nobreak >nul
+
+echo.
+echo ============================================
+echo   All services started!
+echo   Open http://localhost:5173 in your browser
+echo ============================================
+echo.

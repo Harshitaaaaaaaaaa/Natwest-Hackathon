@@ -32,6 +32,15 @@ export interface OnboardingAnswers {
   visual: 'gauge' | 'line' | 'table';
 }
 
+// === DATASET SCHEMA (returned by profiler, sent to orchestrator) ===
+export interface DatasetSchema {
+  metric_col: string;
+  date_col: string;
+  dimension_cols: string[];
+  date_min?: string;   // "YYYY-MM-DD" — earliest date in dataset
+  date_max?: string;   // "YYYY-MM-DD" — latest date in dataset
+}
+
 // === LLM INTENT (from classification service) ===
 export interface GeminiIntent {
   query_type: QueryType[];  // e.g. ['Descriptive', 'Diagnostic'] — multiple categories per query

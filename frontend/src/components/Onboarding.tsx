@@ -3,34 +3,36 @@ import { useAppContext } from '../stores/appStore';
 import { Sparkles } from 'lucide-react';
 import type { OnboardingAnswers, Persona } from '../types';
 import { getUserId } from '../services/sessionService';
+import { useTranslation } from 'react-i18next';
 
 const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
 
 // ================================================================
+// ================================================================
 // QUESTION DATA
 // ================================================================
 
-interface QuestionOption { key: string; label: string; subtitle: string; }
-interface Question { id: string; prompt: string; options: QuestionOption[]; }
+interface QuestionOption { key: string; icon: string; labelKey: string; subtitleKey: string; }
+interface Question { id: string; promptKey: string; options: QuestionOption[]; }
 
 const SLIDE_1_QUESTIONS: Question[] = [
   {
     id: 'audience',
-    prompt: 'When you discover something important in your data, who depends on it most?',
+    promptKey: 'onboarding.q1Prompt',
     options: [
-      { key: 'me',         label: '🙋  Just me',                  subtitle: 'Personal learning & decisions' },
-      { key: 'team',       label: '👥  My team or clients',        subtitle: 'Operational & team reporting' },
-      { key: 'board',      label: '📊  The Board or leadership',   subtitle: 'Strategic decision-making' },
-      { key: 'regulators', label: '🔒  Regulators or auditors',    subtitle: 'Compliance & accountability' },
+      { key: 'me',         icon: '🙋', labelKey: 'onboarding.q1A1Label', subtitleKey: 'onboarding.q1A1Sub' },
+      { key: 'team',       icon: '👥', labelKey: 'onboarding.q1A2Label', subtitleKey: 'onboarding.q1A2Sub' },
+      { key: 'board',      icon: '📊', labelKey: 'onboarding.q1A3Label', subtitleKey: 'onboarding.q1A3Sub' },
+      { key: 'regulators', icon: '🔒', labelKey: 'onboarding.q1A4Label', subtitleKey: 'onboarding.q1A4Sub' },
     ],
   },
   {
     id: 'trust',
-    prompt: 'What convinces you that a data result is reliable?',
+    promptKey: 'onboarding.q2Prompt',
     options: [
-      { key: 'actionable', label: '✅  It\'s easy to act on',          subtitle: 'Outcome-driven thinking' },
-      { key: 'trend',      label: '📈  It matches trends I expect',    subtitle: 'Pattern-driven thinking' },
-      { key: 'raw_math',   label: '🔢  I can see the source and math', subtitle: 'Evidence-driven thinking' },
+      { key: 'actionable', icon: '✅', labelKey: 'onboarding.q2A1Label', subtitleKey: 'onboarding.q2A1Sub' },
+      { key: 'trend',      icon: '📈', labelKey: 'onboarding.q2A2Label', subtitleKey: 'onboarding.q2A2Sub' },
+      { key: 'raw_math',   icon: '🔢', labelKey: 'onboarding.q2A3Label', subtitleKey: 'onboarding.q2A3Sub' },
     ],
   },
 ];
@@ -38,20 +40,20 @@ const SLIDE_1_QUESTIONS: Question[] = [
 const SLIDE_2_QUESTIONS: Question[] = [
   {
     id: 'instinct',
-    prompt: 'A key metric just dropped 20%. Your first instinct is to:',
+    promptKey: 'onboarding.q3Prompt',
     options: [
-      { key: 'fix',     label: '⚡  Fix it immediately',      subtitle: 'Action-first approach' },
-      { key: 'explain', label: '🔍  Understand what changed',  subtitle: 'Insight-first approach' },
-      { key: 'verify',  label: '🧪  Check if the data is right', subtitle: 'Validation-first approach' },
+      { key: 'fix',     icon: '⚡', labelKey: 'onboarding.q3A1Label', subtitleKey: 'onboarding.q3A1Sub' },
+      { key: 'explain', icon: '🔍', labelKey: 'onboarding.q3A2Label', subtitleKey: 'onboarding.q3A2Sub' },
+      { key: 'verify',  icon: '🧪', labelKey: 'onboarding.q3A3Label', subtitleKey: 'onboarding.q3A3Sub' },
     ],
   },
   {
     id: 'visual',
-    prompt: 'How do you prefer to grasp the big picture at a glance?',
+    promptKey: 'onboarding.q4Prompt',
     options: [
-      { key: 'gauge', label: '🎯  A simple Red / Yellow / Green signal', subtitle: 'Instant status read' },
-      { key: 'line',  label: '📉  A trend line with clear direction',    subtitle: 'Change over time' },
-      { key: 'table', label: '📋  A full table with all the numbers',    subtitle: 'Complete detail' },
+      { key: 'gauge', icon: '🎯', labelKey: 'onboarding.q4A1Label', subtitleKey: 'onboarding.q4A1Sub' },
+      { key: 'line',  icon: '📉', labelKey: 'onboarding.q4A2Label', subtitleKey: 'onboarding.q4A2Sub' },
+      { key: 'table', icon: '📋', labelKey: 'onboarding.q4A3Label', subtitleKey: 'onboarding.q4A3Sub' },
     ],
   },
 ];
@@ -116,6 +118,7 @@ function useTypewriter(text: string, speed = 28) {
 
 export const Onboarding: React.FC = () => {
   const { completeOnboarding, setAppView, setOnboardingAnswers, datasetRef } = useAppContext();
+  const { t } = useTranslation();
   const [slide, setSlide] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -163,9 +166,9 @@ export const Onboarding: React.FC = () => {
             <Sparkles className="w-6 h-6 text-blue-500" />
           </div>
           <p className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">
-            {slide === 0 ? 'Step 1 of 2 — Who you are' : 'Step 2 of 2 — How you think'}
+            {slide === 0 ? t('onboarding.step1') : t('onboarding.step2')}
           </p>
-          <p className="text-xs text-slate-400">Your answers tailor every chart, explanation, and insight.</p>
+          <p className="text-xs text-slate-400">{t('onboarding.tailorNote')}</p>
         </div>
 
         {/* Questions */}
@@ -187,7 +190,7 @@ export const Onboarding: React.FC = () => {
             disabled={!canProceed || isSubmitting}
             className="glass-card px-10 py-4 text-lg font-semibold text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed hover:text-blue-600 transition-all"
           >
-            {isSubmitting ? 'Configuring Persona...' : (slide === 0 ? 'Continue →' : 'Enter Talk2Data →')}
+            {isSubmitting ? t('onboarding.configuring') : (slide === 0 ? t('onboarding.continueBtn') : t('onboarding.enterAppBtn'))}
           </button>
         </div>
       </div>
@@ -204,22 +207,28 @@ const QuestionBlock: React.FC<{
   selected: string | null;
   onSelect: (key: string) => void;
 }> = ({ question, selected, onSelect }) => {
-  const typewriterText = useTypewriter(question.prompt, 22);
+  const { t } = useTranslation();
+  const typewriterText = useTypewriter(t(question.promptKey), 22);
 
   return (
     <div className="fade-in-up">
       <h3 className="text-lg font-semibold text-slate-700 mb-4 min-h-[1.75rem]">{typewriterText}</h3>
       <div className="grid gap-3">
-        {question.options.map(opt => (
-          <button
-            key={opt.key}
-            onClick={() => onSelect(opt.key)}
-            className={`option-pill flex flex-col gap-0.5 ${selected === opt.key ? 'selected' : ''}`}
-          >
-            <span className="font-medium">{opt.label}</span>
-            <span className="text-xs text-slate-400">{opt.subtitle}</span>
-          </button>
-        ))}
+        {question.options.map(opt => {
+          // Remove emoji from translated string since t() doesn't need to translate standard emojis, but we keep it here for layout.
+          // Wait, the en.json has emojis in the strings. Let's just use what t() returns.
+          // Actually I provided emoji in translation string itself. Let's just use t().
+          return (
+            <button
+              key={opt.key}
+              onClick={() => onSelect(opt.key)}
+              className={`option-pill flex flex-col gap-0.5 ${selected === opt.key ? 'selected' : ''}`}
+            >
+              <span className="font-medium">{t(opt.labelKey)}</span>
+              <span className="text-xs text-slate-400">{t(opt.subtitleKey)}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

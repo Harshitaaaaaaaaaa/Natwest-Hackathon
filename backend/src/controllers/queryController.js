@@ -9,13 +9,13 @@ const axios = require('axios'); // Remember to run: npm install axios
  */
 const processQuery = async (req, res) => {
     try {
-        const { query, dataset_ref } = req.body;
+        const { query, dataset_ref, target_schema, language = 'en' } = req.body;
 
         if (!query) {
             return res.status(400).json({ message: 'Query text is required' });
         }
 
-        const mlPayload = await generateExecutionPlan(query, dataset_ref);
+        const mlPayload = await generateExecutionPlan(query, dataset_ref, target_schema, language);
 
         let pureMathData;
         try {

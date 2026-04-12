@@ -12,7 +12,7 @@
  *   4. enrichWithGroq(ml)       → summary_levels rewritten per persona (optional)
  */
 
-import type { GeminiIntent, MLOutputContract, MetricPoint, ChartDataContract, Persona, SuggestedVisual } from '../types';
+import type { GeminiIntent, MLOutputContract, MetricPoint, ChartDataContract, Persona, SuggestedVisual, DatasetSchema } from '../types';
 
 const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
@@ -58,11 +58,13 @@ export async function getInsightResponse(
   intent: GeminiIntent,
   persona: Persona,
   datasetRef: string,
+  datasetSchema: DatasetSchema | null,
+  language: string,
 ): Promise<MLOutputContract> {
   let ml: MLOutputContract;
 
   try {
-    ml = await fetchFromBackend(query, datasetRef);
+    ml = await fetchFromBackend(query, datasetRef, datasetSchema, language);
   } catch (err) {
     console.error('[insightAdapter] Backend query failed:', err);
     throw err; // Let the caller (PresentationShell) handle the error display
@@ -83,7 +85,7 @@ export async function getInsightResponse(
   // Optionally enrich summary_levels with Groq (non-blocking)
   if (GROQ_API_KEY) {
     try {
-      ml = await enrichWithGroq(ml, query, persona);
+      ml = await enrichWithGroq(ml, query, persona, language);
     } catch {
       // Groq enrichment failed — use pre-generated summary_levels as-is
     }
@@ -97,11 +99,11 @@ export async function getInsightResponse(
 // LLM orchestrator → Python execution engine → Superstore.csv
 // ================================================================
 
-async function fetchFromBackend(query: string, dataset_ref: string): Promise<MLOutputContract> {
+async function fetchFromBackend(query: string, dataset_ref: string, target_schema: DatasetSchema | null, language: string): Promise<MLOutputContract> {
   const response = await fetch(`${CHAT_API_URL}/api/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, dataset_ref }),
+    body: JSON.stringify({ query, dataset_ref, target_schema, language }),
   });
 
   if (!response.ok) {
@@ -146,18 +148,21 @@ function adaptEngineOutput(raw: Record<string, unknown>): MLOutputContract {
 
   // ── Breakdown → flat array ────────────────────────────────────────
   const rawBreakdown = (raw.breakdown as Record<string, any[]>) ?? {};
-  const breakdown: MetricPoint[] = [
-    ...(rawBreakdown.category ?? []),
-    ...(rawBreakdown.merchant ?? []),
-    ...(rawBreakdown.region   ?? []),
-    ...(rawBreakdown.segment  ?? []),
-  ].map((b: any) => ({
-    label:      b.label ?? '',
-    value:      b.value ?? 0,
-    unit:       'USD',
-    prev_value: null,
-    category:   b.percentage != null ? `${b.percentage}%` : undefined,
-  }));
+  const breakdown: MetricPoint[] = [];
+
+  for (const [key, arr] of Object.entries(rawBreakdown)) {
+    if (key !== 'time' && Array.isArray(arr)) {
+      arr.forEach((b: any) => {
+        breakdown.push({
+          label:      b.label ?? '',
+          value:      b.value ?? 0,
+          unit:       'USD', // Note: dynamically passing unit via python is next iteration
+          prev_value: null,
+          category:   b.percentage != null ? `${key}: ${b.percentage}%` : key,
+        });
+      });
+    }
+  }
 
   // ── Diagnostics → string array ────────────────────────────────────
   const rawDiag = (raw.diagnostics as { causes?: any[]; anomalies?: any[] }) ?? {};
@@ -200,15 +205,35 @@ function adaptEngineOutput(raw: Record<string, unknown>): MLOutputContract {
     const chartType = typeMap[c.chart_type?.toLowerCase?.()] ?? 'Bar';
 
     const xAxis: string[] = c.x_axis ?? [];
-    const firstSeries = (c.series ?? [])[0] ?? {};
-    const values: number[] = firstSeries.values ?? [];
+    const allSeries: { name: string; values: (number | null)[] }[] = c.series ?? [];
 
-    const data: MetricPoint[] = xAxis.map((label: string, idx: number) => ({
-      label,
-      value:      values[idx] ?? 0,
-      prev_value: null,
-      unit:       'USD',
-    }));
+    const data: MetricPoint[] = xAxis.map((label: string, idx: number) => {
+      const v0 = allSeries[0]?.values?.[idx];
+      const v1 = allSeries[1]?.values?.[idx];
+      const isFiniteNum = (v: any): v is number => v !== null && v !== undefined && Number.isFinite(Number(v));
+
+      let value: number = 0;
+      let prev_value: number | null = null;
+
+      if (allSeries.length <= 1) {
+        // Single series
+        value = isFiniteNum(v0) ? Number(v0) : 0;
+      } else if (isFiniteNum(v0) && isFiniteNum(v1)) {
+        // Both series have values → comparison (Current vs Baseline)
+        value      = Number(v0);
+        prev_value = Number(v1);
+      } else if (!isFiniteNum(v0) && isFiniteNum(v1)) {
+        // Series-0 is null (forecast period) → use Series-1 as the forecast value
+        value      = Number(v1);
+        prev_value = null;
+      } else {
+        // Series-0 has value, Series-1 is null → historical actual
+        value      = isFiniteNum(v0) ? Number(v0) : 0;
+        prev_value = null;
+      }
+
+      return { label, value, prev_value, unit: 'USD' };
+    });
 
     return {
       id:    c.chart_id ?? `chart_${i}`,
@@ -344,6 +369,7 @@ async function enrichWithGroq(
   ml: MLOutputContract,
   query: string,
   persona: Persona,
+  language: string,
 ): Promise<MLOutputContract> {
   const TONE_GUIDE: Record<Persona, string> = {
     Beginner:   'Warm, simple, everyday analogies. No jargon. Max 1 sentence per level.',
@@ -361,7 +387,8 @@ async function enrichWithGroq(
 
   const systemPrompt = `You are a data storytelling assistant for Talk2Data.
 You rewrite analytical summaries for different user personas.
-Always reference actual numbers. Respond ONLY with a valid JSON object containing keys: simple, medium, advanced, action_text.`;
+Always reference actual numbers. Respond ONLY with a valid JSON object containing keys: simple, medium, advanced, action_text.
+You MUST generate your final narrative response entirely in the language corresponding to this ISO code: [${language}]. Do not output English unless the code is 'en'.`;
 
   const userPrompt = `The ML backend analyzed the query: "${query}"
 
