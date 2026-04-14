@@ -524,28 +524,29 @@ cd ../execution_engine && pip install -r requirements.txt
 
 ---
 
-### 5. Run the Project
+### 5. Run the Project 
 
 #### Windows (recommended)
+##### run from project root directory
 ```cmd
 scripts\start_all.bat
 ```
 
 #### Mac/Linux (3 terminals)
 
-Terminal 1:
+Terminal 1 (from project root → then enter execution_engine):
 ```bash
 cd execution_engine
 python -m uvicorn src.main:app --port 8000 --host 0.0.0.0
 ```
 
-Terminal 2:
+Terminal 2 (from project root → then enter backend):
 ```bash
 cd backend
 npm run dev
 ```
 
-Terminal 3:
+Terminal 3 (from project root → then enter frontend):
 ```bash
 cd frontend
 npm run dev
