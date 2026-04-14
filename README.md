@@ -25,7 +25,7 @@ Copy
  
 ## Overview
  
-**Enterprise LLMs are great at poetry. They are terrible at math.**
+**Enterprise LLMs are strong at language, but less reliable for precise calculations.**
  
 Bolt is a **deterministic data engine disguised as a conversational interface** — built for the NatWest Hackathon 2026 by **Algo-Vengers**. It solves the single most dangerous flaw in AI-powered analytics: the hallucinated number that sounds completely confident and is completely wrong.
  
