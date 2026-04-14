@@ -1,5 +1,5 @@
 {
-  "appName": "Talk2Data",
+  "appName": "Bolt",
   "tagline": "Ask questions about your data in plain English.",
   "analyze": "Analyze",
   "analyzing": "Analyzing...",
@@ -24,7 +24,7 @@
   "somethingWrong": "Something went wrong. Please try again.",
   "loadEarlier": "Load earlier messages",
   "loadingEarlier": "Loading earlier messages…",
-  "configuringApp": "Configuring Talk2Data...",
+  "configuringApp": "Configuring Bolt...",
   "switchPersonaChip": "Switch persona to see the same insight rendered differently",
   "voiceNotSupported": "Voice input is not supported in this browser.",
   "language": "Language",
@@ -51,7 +51,7 @@
 
   "upload": {
     "switchUser": "Switch User",
-    "welcome": "Welcome to Talk2Data",
+    "welcome": "Welcome to Bolt",
     "connectData": "Choose how you want to connect your data to begin extracting actionable insights.",
     "generalUser": "General User",
     "generalDesc": "Upload your own local CSV file to instantly generate charts, trends, and summaries.",
@@ -104,7 +104,7 @@
 
     "configuring": "Configuring Persona...",
     "continueBtn": "Continue →",
-    "enterAppBtn": "Enter Talk2Data →"
+    "enterAppBtn": "Enter Bolt →"
   },
 
   "transition": {
@@ -167,3 +167,4 @@
     "rawValues": "Raw Values"
   }
 }
+

@@ -1,5 +1,5 @@
 const { generateExecutionPlan } = require('../services/orchestratorService');
-const axios = require('axios'); // Remember to run: npm install axios
+const { engineJsonRequest } = require('../utils/engineClient');
 
 /**
  * Orchestrates the full query pipeline: 
@@ -17,24 +17,25 @@ const processQuery = async (req, res) => {
 
         const mlPayload = await generateExecutionPlan(query, dataset_ref, target_schema, language);
 
-        let pureMathData;
-        try {
-            const mathResponse = await axios.post('http://localhost:8000/compute', mlPayload);
-            pureMathData = mathResponse.data;
-        } catch (mathError) {
-            if (mathError.code === 'ECONNREFUSED') {
-                return res.status(503).json({ 
-                    message: 'Execution Engine (Python) is currently down. Please try again later.' 
-                });
-            }
-            throw mathError;
-        }
+        const { data: pureMathData } = await engineJsonRequest('/compute', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(mlPayload),
+        });
 
         res.status(200).json(pureMathData);
 
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: 'Server Error processing query', error: error.message });
+        const status = error.status === 400 ? 400 : 503;
+        res.status(status).json({
+            message: status === 503
+                ? 'Execution engine is still waking up. Please retry in a few seconds.'
+                : 'Server Error processing query',
+            error: error.details || error.message,
+        });
     }
 };
 

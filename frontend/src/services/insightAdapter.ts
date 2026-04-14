@@ -13,9 +13,9 @@
  */
 
 import type { GeminiIntent, MLOutputContract, MetricPoint, ChartDataContract, Persona, SuggestedVisual, DatasetSchema } from '../types';
-
-const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
+import { buildApiUrl } from '../config/api';
+const rawGroqKeys = import.meta.env.VITE_GROQ_API_KEY || '';
+const GROQ_API_KEYS = rawGroqKeys.split(',').map((k: string) => k.trim()).filter(Boolean);
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -25,28 +25,45 @@ async function groqChat(
   userPrompt: string,
   jsonMode = false,
 ): Promise<string> {
-  const res = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.2,
-      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API ${res.status}: ${err}`);
+  if (GROQ_API_KEYS.length === 0) throw new Error("No Groq API keys provided.");
+  let lastError: any = null;
+
+  for (const key of GROQ_API_KEYS) {
+    try {
+      const res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.2,
+          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error('Rate Limited (429)');
+        }
+        const err = await res.text();
+        throw new Error(`Groq API ${res.status}: ${err}`);
+      }
+      
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() ?? '';
+    } catch (err: any) {
+      console.warn(`[Groq Frontend] Key failed: ${err.message}. Trying next key...`);
+      lastError = err;
+    }
   }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() ?? '';
+
+  throw new Error(`All available GROQ API keys failed. Last error: ${lastError?.message || 'Unknown'}`);
 }
 
 // ================================================================
@@ -83,7 +100,7 @@ export async function getInsightResponse(
   ml = applyPersonaRules(ml, intent, persona);
 
   // Optionally enrich summary_levels with Groq (non-blocking)
-  if (GROQ_API_KEY) {
+  if (GROQ_API_KEYS.length > 0) {
     try {
       ml = await enrichWithGroq(ml, query, persona, language);
     } catch {
@@ -100,7 +117,7 @@ export async function getInsightResponse(
 // ================================================================
 
 async function fetchFromBackend(query: string, dataset_ref: string, target_schema: DatasetSchema | null, language: string): Promise<MLOutputContract> {
-  const response = await fetch(`${CHAT_API_URL}/api/query`, {
+  const response = await fetch(buildApiUrl('/api/query'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, dataset_ref, target_schema, language }),
@@ -385,7 +402,7 @@ async function enrichWithGroq(
     .map(m => `${m.label}: ${m.value.toLocaleString()} ${m.unit ?? ''} (prev: ${m.prev_value?.toLocaleString() ?? 'N/A'})`)
     .join('; ');
 
-  const systemPrompt = `You are a data storytelling assistant for Talk2Data.
+  const systemPrompt = `You are a data storytelling assistant for Bolt.
 You rewrite analytical summaries for different user personas.
 Always reference actual numbers. Respond ONLY with a valid JSON object containing keys: simple, medium, advanced, action_text.
 You MUST generate your final narrative response entirely in the language corresponding to this ISO code: [${language}]. Do not output English unless the code is 'en'.`;
@@ -476,3 +493,4 @@ function buildRecommendations(persona: Persona, queryType: string): string[] {
   const p = recs[persona];
   return (p[queryType] ?? p.Default ?? []) as string[];
 }
+

@@ -178,7 +178,7 @@ export function buildResponseFromInsight(
     blocks.push({
       type: 'audit',
       content: '[RECORD]',
-      auditContent: `Source: ML Analytics Engine | Timestamp: ${new Date().toLocaleString()} | Confidence: ${(ml.confidence * 100).toFixed(1)}% | Warnings: ${ml.warnings.join(', ') || 'None'}`,
+      auditContent: `Source: ML Analytics Engine | Timestamp: ${new Date().toLocaleString()} | Confidence: ${(ml.confidence * 100).toFixed(1)}%`,
     });
   }
 

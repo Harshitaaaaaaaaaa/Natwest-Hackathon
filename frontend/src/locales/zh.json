@@ -1,5 +1,5 @@
 {
-  "tagline": "在Talk2Data中用平易近人的话问你数据的问题。",
+  "tagline": "在Bolt中用平易近人的话问你数据的问题。",
   "analyze": "分析",
   "analyzing": "正在分析中…",
   "analyzingData": "正在分析你的数据…",
@@ -23,7 +23,7 @@
   "somethingWrong": "发生了什么错误。请再试一次。",
   "loadEarlier": "加载早些的消息",
   "loadingEarlier": "正在加载早些的消息…",
-  "configuringApp": "配置Talk2Data…",
+  "configuringApp": "配置Bolt…",
   "switchPersonaChip": "切换角色以看到相同的见解以不同方式呈现",
   "voiceNotSupported": "语音输入在此浏览器中不受支持。",
   "language": "语言",
@@ -48,7 +48,7 @@
   },
   "upload": {
     "switchUser": "切换用户",
-    "welcome": "欢迎使用Talk2Data",
+    "welcome": "欢迎使用Bolt",
     "connectData": "选择如何连接你的数据以开始提取可操作见解。",
     "generalUser": "普通用户",
     "generalDesc": "上传你的本地CSV文件以立即生成图表、趋势和摘要。",
@@ -96,7 +96,7 @@
     "q4A3Sub": "完整详细信息",
     "configuring": "配置角色…",
     "continueBtn": "继续 →",
-    "enterAppBtn": "进入Talk2Data →"
+    "enterAppBtn": "进入Bolt →"
   },
   "transition": {
     "understanding": "理解你的学习风格…",
@@ -148,5 +148,5 @@
     "limitations": "限制",
     "rawValues": "原始值"
   },
-  "appName": "Talk2Data"
+  "appName": "Bolt"
 }

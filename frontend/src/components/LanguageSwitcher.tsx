@@ -1,19 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, ChevronDown } from 'lucide-react';
+import { ChevronDown, Globe } from 'lucide-react';
 
 const LANGUAGES = [
-  { code: 'en', label: 'English',    flag: '🇬🇧' },
-  { code: 'hi', label: 'हिन्दी',      flag: '🇮🇳' },
-  { code: 'bn', label: 'বাংলা',      flag: '🇮🇳' },
-  { code: 'te', label: 'తెలుగు',     flag: '🇮🇳' },
-  { code: 'mr', label: 'मराठी',      flag: '🇮🇳' },
-  { code: 'ta', label: 'தமிழ்',      flag: '🇮🇳' },
-  { code: 'es', label: 'Español',    flag: '🇪🇸' },
-  { code: 'fr', label: 'Français',   flag: '🇫🇷' },
-  { code: 'zh', label: '中文',        flag: '🇨🇳' },
-  { code: 'ar', label: 'العربية',     flag: '🇸🇦' },
-  { code: 'de', label: 'Deutsch',    flag: '🇩🇪' },
+  { code: 'en', label: 'English', flag: 'GB' },
+  { code: 'hi', label: 'Hindi', flag: 'IN' },
+  { code: 'bn', label: 'Bangla', flag: 'IN' },
+  { code: 'te', label: 'Telugu', flag: 'IN' },
+  { code: 'mr', label: 'Marathi', flag: 'IN' },
+  { code: 'ta', label: 'Tamil', flag: 'IN' },
+  { code: 'es', label: 'Espanol', flag: 'ES' },
+  { code: 'fr', label: 'Francais', flag: 'FR' },
+  { code: 'zh', label: 'Chinese', flag: 'CN' },
+  { code: 'ar', label: 'Arabic', flag: 'SA' },
+  { code: 'de', label: 'Deutsch', flag: 'DE' },
 ] as const;
 
 interface LanguageSwitcherProps {
@@ -25,13 +25,15 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ onLanguageCh
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const currentLang = LANGUAGES.find(l => l.code === i18n.language) ?? LANGUAGES[0];
+  const currentLang = LANGUAGES.find((lang) => lang.code === i18n.language) ?? LANGUAGES[0];
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
+
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
@@ -39,46 +41,45 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ onLanguageCh
   const handleSwitch = (code: string) => {
     i18n.changeLanguage(code);
     localStorage.setItem('t2d_language', code);
-    // Apply RTL for Arabic
     document.documentElement.dir = code === 'ar' ? 'rtl' : 'ltr';
     onLanguageChange?.(code);
     setOpen(false);
   };
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative w-full min-w-0" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-600 transition-all text-xs font-medium shadow-sm"
-        title="Switch Language"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 text-[11px] font-medium text-zinc-300 transition-all hover:border-violet-400/30 hover:bg-white/[0.07] hover:text-white"
+        title="Switch language"
       >
-        <Globe size={14} />
-        <span>{currentLang.flag} {currentLang.label}</span>
-        <ChevronDown size={12} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <Globe size={14} className="shrink-0" />
+        <span className="shrink-0">{currentLang.flag}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{currentLang.label}</span>
+        <ChevronDown size={12} className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div
-          className="absolute top-full right-0 mt-1.5 w-48 rounded-2xl shadow-xl border border-slate-200/60 bg-white/95 backdrop-blur-md z-50 overflow-hidden"
-          style={{ maxHeight: '320px', overflowY: 'auto' }}
+          className="custom-scrollbar absolute left-0 top-full z-50 mt-2 w-full min-w-[180px] max-w-[220px] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/96 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+          style={{ maxHeight: '260px' }}
         >
-          {LANGUAGES.map(lang => {
+          {LANGUAGES.map((lang) => {
             const isActive = lang.code === i18n.language;
+
             return (
               <button
                 key={lang.code}
                 onClick={() => handleSwitch(lang.code)}
-                className={`w-full text-left px-4 py-2.5 flex items-center gap-3 text-sm transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[12px] transition-all ${
                   isActive
-                    ? 'bg-blue-50 text-blue-700 font-semibold'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    ? 'bg-violet-500/15 text-violet-200 shadow-[0_0_18px_rgba(168,85,247,0.18)]'
+                    : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
                 }`}
               >
-                <span className="text-base">{lang.flag}</span>
-                <span>{lang.label}</span>
-                {isActive && (
-                  <span className="ml-auto text-xs text-blue-500 font-semibold">✓</span>
-                )}
+                <span className="shrink-0 text-[10px] font-semibold text-zinc-500">{lang.flag}</span>
+                <span className="min-w-0 flex-1 truncate">{lang.label}</span>
+                {isActive && <span className="ml-auto shrink-0 text-[10px] font-semibold text-violet-300">Active</span>}
               </button>
             );
           })}

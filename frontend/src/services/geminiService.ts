@@ -5,7 +5,8 @@
 
 import type { GeminiIntent, Persona } from '../types';
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
+const rawGroqKeys = import.meta.env.VITE_GROQ_API_KEY || '';
+const GROQ_API_KEYS = rawGroqKeys.split(',').map((k: string) => k.trim()).filter(Boolean);
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -15,30 +16,45 @@ async function groqChat(
   userPrompt: string,
   jsonMode = false,
 ): Promise<string> {
-  const res = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.2,
-      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
-    }),
-  });
+  if (GROQ_API_KEYS.length === 0) throw new Error("No Groq API keys provided.");
+  let lastError: any = null;
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API ${res.status}: ${err}`);
+  for (const key of GROQ_API_KEYS) {
+    try {
+      const res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.2,
+          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error('Rate Limited (429)');
+        }
+        const err = await res.text();
+        throw new Error(`Groq API ${res.status}: ${err}`);
+      }
+
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content?.trim() ?? '';
+    } catch (err: any) {
+      console.warn(`[Groq Frontend Service] Key failed: ${err.message}. Trying next key...`);
+      lastError = err;
+    }
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() ?? '';
+  throw new Error(`All available GROQ API keys failed. Last error: ${lastError?.message || 'Unknown'}`);
 }
 
 const FALLBACK_INTENT: GeminiIntent = {
@@ -57,7 +73,7 @@ const FALLBACK_INTENT: GeminiIntent = {
 // ================================================================
 
 export async function classifyIntent(query: string, persona: Persona): Promise<GeminiIntent> {
-  if (!GROQ_API_KEY) {
+  if (GROQ_API_KEYS.length === 0) {
     console.warn('[llmService] No Groq API key — using keyword fallback.');
     return fallbackClassify(query);
   }
@@ -295,7 +311,7 @@ export async function simplifyBlock(
     return `In simple terms: ${blockContent}`;
   };
 
-  if (!GROQ_API_KEY) return smartFallback();
+  if (GROQ_API_KEYS.length === 0) return smartFallback();
 
   // ── Format context for Groq ─────────────────────────────────────
   const metricsText = context?.metrics?.map(m => {
@@ -312,7 +328,7 @@ export async function simplifyBlock(
     : null;
 
   try {
-    const systemPrompt = `You are a data simplification assistant for Talk2Data.
+    const systemPrompt = `You are a data simplification assistant for Bolt.
 A user clicked "Help me understand" on a specific block inside a data analysis response.
 User persona: ${persona} — ${STYLE_GUIDE[persona]}
 Explain the block text in 2-3 sentences. Reference actual numbers. Do NOT repeat the block text. Adapt tone to the persona. Reply with ONLY the explanation text.`;
@@ -347,12 +363,12 @@ Text: "${blockContent}"`;
 // ================================================================
 
 export async function handleConversationalQuery(query: string, persona: Persona, language: string): Promise<string> {
-  const fallback = "Hello! I am your Talk2Data assistant. I can analyze revenue, costs, churn, and answer deep operational questions. What can I look up for you today?";
+  const fallback = "Hello! I am your Bolt assistant. I can analyze revenue, costs, churn, and answer deep operational questions. What can I look up for you today?";
   
-  if (!GROQ_API_KEY) return fallback;
+  if (GROQ_API_KEYS.length === 0) return fallback;
 
   try {
-    const systemPrompt = `You are the Talk2Data enterprise AI assistant.
+    const systemPrompt = `You are the Bolt enterprise AI assistant.
 The active interface persona is: ${persona}.
 Your goal is to answer data questions for the user.
 Respond nicely and conversationally in 1-2 sentences.
@@ -367,3 +383,4 @@ You MUST generate your final narrative response entirely in the language corresp
     return fallback;
   }
 }
+

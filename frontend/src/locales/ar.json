@@ -23,7 +23,7 @@
   "somethingWrong": "حدث خطأ. حاول مرة أخرى.",
   "loadEarlier": "تحميل الرسائل السابقة",
   "loadingEarlier": "تحميل الرسائل السابقة... ",
-  "configuringApp": "تكوين Talk2Data... ",
+  "configuringApp": "تكوين Bolt... ",
   "switchPersonaChip": "تحويل الشخصية لترى نفس الإجابة مصممة بشكل مختلف",
   "voiceNotSupported": "لا يدعم الدخل الصوتي هذا المستعرض.",
   "language": "لغة",
@@ -48,7 +48,7 @@
   },
   "upload": {
     "switchUser": "تحويل المستخدم",
-    "welcome": "مرحبا بكم في Talk2Data",
+    "welcome": "مرحبا بكم في Bolt",
     "connectData": "اختر كيفية ربط بياناتك لبدء استخراج الإجابات الفعالة.",
     "generalUser": "مستخدم عام",
     "generalDesc": "تحميل ملف CSV الخاص بك المحلي لتحقيق الجداول، والتنبؤات، والملخصات.",
@@ -96,7 +96,7 @@
     "q4A3Sub": "التفاصيل الكاملة",
     "configuring": "تكوين الشخصية... ",
     "continueBtn": "استمر →",
-    "enterAppBtn": "دخول Talk2Data →"
+    "enterAppBtn": "دخول Bolt →"
   },
   "transition": {
     "understanding": "فهم نمط التعلم... ",
@@ -119,5 +119,5 @@
     "readyAudit": "جاهز. كل الإجابات مخصصة للتحقق والامتثال.",
     "trustNote": "البيانات نفسها. تقديم مختلف. مخصصة ل рольك."
   },
-  "appName": "Talk2Data"
+  "appName": "Bolt"
 }

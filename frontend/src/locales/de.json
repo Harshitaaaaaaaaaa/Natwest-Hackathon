@@ -23,7 +23,7 @@
   "somethingWrong": "Etwas ist schief gelaufen. Bitte versuche es noch einmal.",
   "loadEarlier": "Frühere Nachrichten laden",
   "loadingEarlier": "Frühere Nachrichten laden…",
-  "configuringApp": "Talk2Data konfigurieren...",
+  "configuringApp": "Bolt konfigurieren...",
   "switchPersonaChip": "Wechsel Profil, um die gleichen Erkenntnisse in einer anderen Darstellung zu sehen",
   "voiceNotSupported": "Stimme einsetzen ist in diesem Browser nicht unterstützt.",
   "language": "Sprache",
@@ -48,7 +48,7 @@
   },
   "upload": {
     "switchUser": "Benutzer wechseln",
-    "welcome": "Willkommen bei Talk2Data",
+    "welcome": "Willkommen bei Bolt",
     "connectData": "Wähle, wie du deine Daten verbinden möchtest, um sofort handlungsfähige Erkenntnisse zu extrahieren.",
     "generalUser": "Allgemeiner Benutzer",
     "generalDesc": "Lade deine eigenen lokalen CSV-Dateien hoch, um sofort Grafiken, Trends und Zusammenfassungen zu generieren.",
@@ -96,7 +96,7 @@
     "q4A3Sub": "Vollständige Details",
     "configuring": "Konfiguration von Profil... ",
     "continueBtn": "Weiter →",
-    "enterAppBtn": "Talk2Data einsteigen →"
+    "enterAppBtn": "Bolt einsteigen →"
   },
   "transition": {
     "understanding": "Verstehe deine Lernweise... ",
@@ -119,5 +119,5 @@
     "readyAudit": "Bereit. Alle Ausgaben sind audit-fertig und politik-mapper.",
     "trustNote": "Selbe Daten. Andere Darstellung. Genau für deine Rolle angepasst."
   },
-  "appName": "Talk2Data"
+  "appName": "Bolt"
 }

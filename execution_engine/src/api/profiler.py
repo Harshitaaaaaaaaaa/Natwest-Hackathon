@@ -1,8 +1,11 @@
 import pandas as pd
 from typing import Dict, Any, List
 import logging
+import os
+import re
+from uuid import uuid4
 from src.models.utils import resolve_secure_path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -10,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 class ProfileRequest(BaseModel):
     dataset_ref: str
+
+
+def _uploads_dir() -> str:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    uploads = os.path.join(project_root, "uploads")
+    os.makedirs(uploads, exist_ok=True)
+    return uploads
+
+
+def _safe_filename(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9.\-_]", "_", name)
 
 def universal_read_csv(path: str, nrows=None):
     ENCODINGS = ["utf-8", "latin1", "utf-8-sig", "cp1252", "iso-8859-1"]
@@ -93,5 +107,32 @@ def analyze_schema(req: ProfileRequest) -> Dict[str, Any]:
             "date_min": date_min,
             "date_max": date_max,
         }
+    }
+
+
+@router.post("/upload_dataset")
+async def upload_dataset(file: UploadFile = File(...)) -> Dict[str, Any]:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    safe_name = _safe_filename(file.filename)
+    final_name = f"{uuid4().hex}-{safe_name}"
+    upload_path = os.path.join(_uploads_dir(), final_name)
+
+    try:
+        content = await file.read()
+        with open(upload_path, "wb") as out:
+            out.write(content)
+    except Exception as exc:
+        logger.error("Error saving uploaded dataset: %s", str(exc))
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+    finally:
+        await file.close()
+
+    return {
+        "status": "success",
+        "dataset_ref": f"uploads/{final_name}",
+        "filename": final_name,
+        "size": len(content),
     }
 

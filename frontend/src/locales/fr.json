@@ -23,7 +23,7 @@
   "somethingWrong": "Quelque chose s'est mal passé. Essayez à nouveau.",
   "loadEarlier": "Charger les messages précédents",
   "loadingEarlier": "Chargement des messages précédents…",
-  "configuringApp": "Configuration de Talk2Data... ",
+  "configuringApp": "Configuration de Bolt... ",
   "switchPersonaChip": "Switch persona pour voir la même intuition rendue différemment",
   "voiceNotSupported": "L'entrée vocale n'est pas prise en charge dans ce navigateur.",
   "language": "Langue",
@@ -48,7 +48,7 @@
   },
   "upload": {
     "switchUser": "Switch Utilisateur",
-    "welcome": "Bienvenue sur Talk2Data",
+    "welcome": "Bienvenue sur Bolt",
     "connectData": "Choisissez comment vous voulez connecter vos données pour commencer à extraire des intuitions actionnables.",
     "generalUser": "Utilisateur général",
     "generalDesc": "Téléchargez votre propre fichier CSV local pour générer instantanément des graphiques, des tendances et des résumés.",
@@ -96,7 +96,7 @@
     "q4A3Sub": "Détails complets",
     "configuring": "Configuration de la Personne... ",
     "continueBtn": "Continuez →",
-    "enterAppBtn": "Entrez dans Talk2Data →"
+    "enterAppBtn": "Entrez dans Bolt →"
   },
   "transition": {
     "understanding": "Compréhension de votre style d'apprentissage... ",
@@ -119,5 +119,5 @@
     "readyAudit": "Prêt. Tous les résultats sont prêts à l'audit et mappés sur la politique.",
     "trustNote": "Même données. Présentation différente. Adaptée exactement pour votre rôle."
   },
-  "appName": "Talk2Data"
+  "appName": "Bolt"
 }

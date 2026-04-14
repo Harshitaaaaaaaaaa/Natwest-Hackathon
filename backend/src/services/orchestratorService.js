@@ -64,25 +64,37 @@ Rules:
 
 const generateExecutionPlan = async (userText, datasetRef = 'data/Superstore.csv', schema = null, language = 'en') => {
     try {
-        if (!process.env.GROQ_API_KEY) {
+        const rawKeys = process.env.GROQ_API_KEY || '';
+        const keys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
+
+        if (keys.length === 0) {
             throw new Error('GROQ_API_KEY is not set');
         }
 
-        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
         const systemPrompt = getCompilerSystemPrompt(datasetRef, schema, language);
+        let lastError = null;
 
+        for (const apiKey of keys) {
+            try {
+                const groq = new Groq({ apiKey, maxRetries: 0 }); // handle retries manually
+                const response = await groq.chat.completions.create({
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userText }
+                    ],
+                    model: 'llama-3.3-70b-versatile',
+                    response_format: { type: 'json_object' },
+                    temperature: 0.1
+                });
 
-        const response = await groq.chat.completions.create({
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userText }
-            ],
-            model: 'llama-3.3-70b-versatile',
-            response_format: { type: 'json_object' },
-            temperature: 0.1
-        });
-
-        return JSON.parse(response.choices[0].message.content);
+                return JSON.parse(response.choices[0].message.content);
+            } catch (err) {
+                console.warn(`[Groq Orchestrator] API Key failed (${err.status === 429 ? 'Rate Limit' : err.message}). Switching to next key...`);
+                lastError = err;
+            }
+        }
+        
+        throw new Error(`All specified GROQ_API_KEYs failed. Last error: ${lastError?.message || 'Unknown'}`);
     } catch (error) {
         console.error('Groq Compiler Error:', error);
         throw new Error(error.message || 'Failed to compile user query');

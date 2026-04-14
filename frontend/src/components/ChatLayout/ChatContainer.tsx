@@ -4,8 +4,7 @@ import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
 import { buildResponseFromInsight } from '../../utils/responseMapper';
 import type { MLOutputContract, MetricPoint, ChartDataContract } from '../../types';
-
-const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || 'http://localhost:5000';
+import { buildApiUrl } from '../../config/api';
 
 /**
  * Adapts the raw Superstore execution engine response into the strict
@@ -179,7 +178,7 @@ export const ChatContainer: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${CHAT_API_URL}/api/query`, {
+      const res = await fetch(buildApiUrl('/api/query'), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ query: text }),
@@ -241,9 +240,9 @@ export const ChatContainer: React.FC = () => {
           {messages.length === 0 ? (
             <div className="m-auto text-center space-y-4 max-w-lg mb-20 fade-in">
               <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary-blue to-primary-blue-light rounded-2xl flex items-center justify-center shadow-lg shadow-primary-blue/20 mb-6">
-                <span className="text-white font-bold text-2xl">DG</span>
+                <span className="text-white font-bold text-2xl">B</span>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800">Hello! I'm DataGuide.</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Hello! I'm Bolt.</h2>
               <p className="text-gray-500">
                 Ask me anything about your Superstore data — sales trends, category breakdowns, regional comparisons, or forecasts. Switch personas on the sidebar to see how I adapt my language and depth.
               </p>
@@ -260,3 +259,4 @@ export const ChatContainer: React.FC = () => {
     </div>
   );
 };
+

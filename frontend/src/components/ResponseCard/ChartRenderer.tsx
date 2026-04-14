@@ -23,9 +23,12 @@ const fmtShort = (val: number) => {
 
 // Shared tooltip style (used by simpler charts)
 const TOOLTIP_STYLE = {
-  borderRadius: 10, border: '1px solid #e2e8f0',
-  boxShadow: '0 4px 24px rgba(31,38,135,0.10)',
-  fontSize: 12, background: 'rgba(255,255,255,0.97)',
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,0.08)',
+  boxShadow: '0 18px 40px rgba(0,0,0,0.38)',
+  fontSize: 12,
+  background: 'rgba(9,12,18,0.96)',
+  color: '#f4f7fb',
 };
 
 /** true when labels look like YYYY-MM date strings */
@@ -56,12 +59,12 @@ const RichTooltip = ({ active, payload, label }: any) => {
   const prev = payload[0]?.payload?.prev_value;
   return (
     <div style={{
-      background: 'rgba(255,255,255,0.97)', border: '1px solid #e2e8f0',
+      background: 'rgba(9,12,18,0.96)', border: '1px solid rgba(255,255,255,0.08)',
       borderRadius: 10, padding: '8px 12px', fontSize: 12,
-      boxShadow: '0 4px 24px rgba(31,38,135,0.10)', minWidth: 140,
+      boxShadow: '0 18px 40px rgba(0,0,0,0.38)', minWidth: 140,
     }}>
-      <p style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>{label}</p>
-      <p style={{ color: '#3b82f6' }}>Value: <strong>{fmt(val)}</strong></p>
+      <p style={{ fontWeight: 700, color: '#f4f7fb', marginBottom: 4 }}>{label}</p>
+      <p style={{ color: '#67e8f9' }}>Value: <strong>{fmt(val)}</strong></p>
       {prev != null && prev !== 0 && (
         <p style={{ color: '#94a3b8', marginTop: 2 }}>Baseline: {fmt(prev)}</p>
       )}
@@ -72,7 +75,7 @@ const RichTooltip = ({ active, payload, label }: any) => {
 const AXIS_TICK = { fill: '#94a3b8', fontSize: 11 };
 
 const chartWrapper = (children: React.ReactNode, height = 200) => (
-  <div className="w-full mt-3 fade-in" style={{ height, animationDelay: '200ms' }}>
+  <div className="w-full min-w-0 mt-3 fade-in" style={{ height, minHeight: height, animationDelay: '200ms' }}>
     <ResponsiveContainer width="100%" height="100%">
       {children as any}
     </ResponsiveContainer>
@@ -84,7 +87,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
   // ── DATA VALIDATION GUARD ──────────────────────────────────────────
   if (!data || data.length === 0) {
     return (
-      <div className="w-full flex items-center justify-center p-6 border border-dashed border-slate-700/50 rounded-xl bg-slate-800/20 text-slate-400 text-sm italic mt-3 h-[100px]">
+      <div className="mt-3 flex h-[100px] w-full items-center justify-center rounded-xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm italic text-zinc-500">
         No graphical data available for this specific query.
       </div>
     );
@@ -99,7 +102,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
 
   if (safeData.length === 0) {
     return (
-      <div className="w-full flex items-center justify-center p-6 border border-dashed border-red-900/50 rounded-xl bg-red-900/10 text-red-400 text-sm italic mt-3 h-[100px]">
+      <div className="mt-3 flex h-[100px] w-full items-center justify-center rounded-xl border border-dashed border-red-500/20 bg-red-500/10 p-6 text-sm italic text-red-300">
         Visual data contained invalid entries (NaN/Infinity) and could not be rendered.
       </div>
     );
@@ -357,7 +360,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
       return (
         <div className="flex flex-col items-center justify-center py-4 mt-3 fade-in" style={{ animationDelay: '200ms' }}>
           <svg width={compact ? 110 : 130} height={compact ? 110 : 130} viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="45" fill="none" stroke="#f1f5f9" strokeWidth="8" />
+            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
             <circle
               cx="50" cy="50" r="45" fill="none"
               stroke={gaugeColor} strokeWidth="8" strokeLinecap="round"
@@ -365,7 +368,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
               transform="rotate(-90 50 50)"
               style={{ transition: 'stroke-dashoffset 1.4s cubic-bezier(0.4,0,0.2,1)' }}
             />
-            <text x="50" y="47" textAnchor="middle" fill="#1e293b" fontSize="17" fontWeight="700">
+            <text x="50" y="47" textAnchor="middle" fill="#f4f7fb" fontSize="17" fontWeight="700">
               {fmtShort(g.value)}
             </text>
             <text x="50" y="62" textAnchor="middle" fill="#94a3b8" fontSize="9">
@@ -392,7 +395,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
 
       return (
         <div className="bullet-chart mt-3 fade-in px-2" style={{ animationDelay: '200ms' }}>
-          <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+          <div className="mb-1.5 flex justify-between text-xs text-zinc-500">
             <span>{actual.label}</span>
             <span>Target: {fmt(target)}</span>
           </div>
@@ -402,7 +405,7 @@ export const ChartRenderer: React.FC<ChartRendererProps> = ({ visual: initialVis
             <div className="bullet-target-line" />
           </div>
           <div className="flex justify-between text-xs mt-1.5">
-            <span className="font-semibold text-slate-700">{fmt(actual.value)}</span>
+            <span className="font-semibold text-white">{fmt(actual.value)}</span>
             <span className={`font-semibold ${barColor === '#10b981' ? 'text-emerald-600' : barColor === '#f59e0b' ? 'text-amber-500' : 'text-red-500'}`}>
               {pct.toFixed(1)}% of target
             </span>

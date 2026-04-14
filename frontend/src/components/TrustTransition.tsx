@@ -1,40 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { useAppContext } from '../stores/appStore';
 import { Shield } from 'lucide-react';
-import type { Persona } from '../types';
 import { useTranslation } from 'react-i18next';
+import { useAppContext } from '../stores/appStore';
+import type { Persona } from '../types';
 
 const TRANSITION_MESSAGES: Record<Persona, string[]> = {
-  Beginner: [
-    'transition.understanding',
-    'transition.warm',
-    'transition.readySimple',
-  ],
-  Everyday: [
-    'transition.workflow',
-    'transition.practical',
-    'transition.readySpeed',
-  ],
-  SME: [
-    'transition.operational',
-    'transition.kpi',
-    'transition.readyTeam',
-  ],
-  Executive: [
-    'transition.strategic',
-    'transition.impact',
-    'transition.readyImpact',
-  ],
-  Analyst: [
-    'transition.detail',
-    'transition.exact',
-    'transition.readyAnalyst',
-  ],
-  Compliance: [
-    'transition.forensic',
-    'transition.trails',
-    'transition.readyAudit',
-  ],
+  Beginner: ['transition.understanding', 'transition.warm', 'transition.readySimple'],
+  Everyday: ['transition.workflow', 'transition.practical', 'transition.readySpeed'],
+  SME: ['transition.operational', 'transition.kpi', 'transition.readyTeam'],
+  Executive: ['transition.strategic', 'transition.impact', 'transition.readyImpact'],
+  Analyst: ['transition.detail', 'transition.exact', 'transition.readyAnalyst'],
+  Compliance: ['transition.forensic', 'transition.trails', 'transition.readyAudit'],
 };
 
 export const TrustTransition: React.FC = () => {
@@ -49,26 +25,24 @@ export const TrustTransition: React.FC = () => {
       setTimeout(() => setStep(2), 2800),
       setTimeout(() => setAppView('chat'), 4600),
     ];
+
     return () => timers.forEach(clearTimeout);
   }, [setAppView]);
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-full p-8">
-      <div className="max-w-md w-full text-center space-y-8">
-
-        {/* Animated icon */}
-        <div className="w-16 h-16 glass-card-high mx-auto flex items-center justify-center pulse-glow">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-violet-500 animate-pulse" />
+    <div className="flex h-full w-full items-center justify-center bg-black px-4 py-8">
+      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-white/[0.03] px-6 py-10 text-center shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl md:px-10">
+        <div className="mx-auto mb-8 flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-400/20 bg-violet-500/10 shadow-[0_0_30px_rgba(168,85,247,0.18)]">
+          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 animate-pulse" />
         </div>
 
-        {/* Step messages */}
-        <div className="space-y-4 min-h-[120px]">
+        <div className="min-h-[132px] space-y-4">
           {msgs.map((msg, i) => (
             <p
               key={i}
               className={`text-lg font-medium transition-all duration-700 ${
-                i <= step ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-              } ${i === step ? 'text-slate-800' : 'text-slate-400'}`}
+                i <= step ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+              } ${i === step ? 'text-white' : 'text-zinc-500'}`}
               style={{ transitionDelay: `${i * 100}ms` }}
             >
               {t(msg)}
@@ -76,16 +50,13 @@ export const TrustTransition: React.FC = () => {
           ))}
         </div>
 
-        {/* Trust note */}
         <div
-          className={`glass-card-low p-4 flex items-center gap-3 text-sm text-slate-500 transition-all duration-500 ${
-            step >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          className={`mt-8 flex items-center gap-3 rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.02] p-4 text-left text-sm text-zinc-400 transition-all duration-500 ${
+            step >= 2 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
           }`}
         >
-          <Shield className="w-5 h-5 text-emerald-500 shrink-0" />
-          <span>
-            {t('transition.trustNote')}
-          </span>
+          <Shield className="h-5 w-5 shrink-0 text-emerald-300" />
+          <span>{t('transition.trustNote')}</span>
         </div>
       </div>
     </div>

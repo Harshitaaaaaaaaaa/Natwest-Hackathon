@@ -23,7 +23,7 @@
   "somethingWrong": "Algo salió mal. Por favor, inténtelo de nuevo.",
   "loadEarlier": "Cargar mensajes anteriores",
   "loadingEarlier": "Cargando mensajes anteriores… ",
-  "configuringApp": "Configurando Talk2Data... ",
+  "configuringApp": "Configurando Bolt... ",
   "switchPersonaChip": "Cambie la persona para ver la misma perspectiva renderizada de manera diferente",
   "voiceNotSupported": "La entrada de voz no está soportada en este navegador.",
   "language": "Idioma",
@@ -48,7 +48,7 @@
   },
   "upload": {
     "switchUser": "Cambiar usuario",
-    "welcome": "Bienvenido a Talk2Data",
+    "welcome": "Bienvenido a Bolt",
     "connectData": "Elige cómo deseas conectar tus datos para comenzar a extraer perspectivas accionables.",
     "generalUser": "Usuario general",
     "generalDesc": "Suba su propio archivo CSV local para generar gráficos, tendencias y resúmenes instantáneamente.",
@@ -96,7 +96,7 @@
     "q4A3Sub": "Detalles completos",
     "configuring": "Configurando Persona... ",
     "continueBtn": "Continuar →",
-    "enterAppBtn": "Ingresar a Talk2Data →"
+    "enterAppBtn": "Ingresar a Bolt →"
   },
   "transition": {
     "understanding": "Entendiendo su estilo de aprendizaje... ",
@@ -135,5 +135,5 @@
     "recommendedNextSteps": "Pasos recomendados siguientes",
     "exactRecordValues": "Valores de registro exactos"
   },
-  "appName": "Talk2Data"
+  "appName": "Bolt"
 }

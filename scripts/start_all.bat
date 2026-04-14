@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   Talk2Data - Starting All Services
+echo   Bolt - Starting All Services
 echo ============================================
 echo.
 
@@ -27,6 +27,7 @@ timeout /t 3 /nobreak >nul
 echo.
 echo ============================================
 echo   All services started!
-echo   Open http://localhost:5173 in your browser
+echo   Open http://127.0.0.1:5173 in your browser
 echo ============================================
 echo.
+
