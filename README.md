@@ -18,9 +18,6 @@
   [![Vite](https://img.shields.io/badge/Vite-8.x-646CFF.svg?logo=vite)](https://vitejs.dev/)
 </div>
 
-Readme updated sections · MD
-Copy
-
 ---
  
 ## Overview
